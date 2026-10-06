@@ -1,0 +1,20 @@
+name: Payment plugin
+description: Add a provider you already use
+title: "feat: "
+labels: ["plugin"]
+body:
+  - type: input
+    attributes:
+      label: Provider
+      placeholder: "The payment system merchants would connect"
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Which calls it must support
+      description: "Refunds, quotes, settlement, or order lookup."
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: "The plugin reads the merchant's own API key. It does not add a payment account to this project."

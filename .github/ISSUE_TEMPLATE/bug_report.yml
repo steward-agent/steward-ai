@@ -1,0 +1,33 @@
+name: Bug report
+description: A broken refund, quote, settlement, or widget behavior
+title: "fix: "
+labels: ["bug"]
+body:
+  - type: textarea
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Version
+      placeholder: "0.1.0"
+  - type: dropdown
+    attributes:
+      label: Plugin
+      options:
+        - http
+        - stripe
+        - shopify
+        - mock
+        - other
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: "Do not paste provider keys, card numbers, or shopper exports."
