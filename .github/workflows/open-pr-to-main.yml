@@ -1,0 +1,50 @@
+name: Open PR to main
+
+on:
+  push:
+    branches:
+      - dev
+      - UAT
+      - "feature/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  open-pr:
+    runs-on: ubuntu-latest
+    if: github.ref_name != 'main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure pull request into main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          existing="$(gh pr list --base main --head "$HEAD_BRANCH" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            echo "Open pull request #$existing already targets main from $HEAD_BRANCH."
+            gh pr view "$existing" --json url --jq .url
+            exit 0
+          fi
+
+          gh pr create \
+            --base main \
+            --head "$HEAD_BRANCH" \
+            --title "Promote ${HEAD_BRANCH} into main" \
+            --body "## Summary
+Automated pull request from \`${HEAD_BRANCH}\` into \`main\`.
+
+## Source
+- Branch: \`${HEAD_BRANCH}\`
+- Commit: \`${GITHUB_SHA}\`
+- Workflow: Open PR to main
+
+## Test plan
+- [ ] CI is green on this pull request
+- [ ] Reviewers confirm the change is ready for \`main\`"

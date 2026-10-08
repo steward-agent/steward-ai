@@ -1,30 +1,52 @@
 # Git strategy
 
-This repository uses GitHub Flow on a single long-lived branch, `main`. Releases are tags on `main`. Plugin contracts are versioned separately from the application version.
+This repository uses long-lived environment branches and short-lived feature branches. Production releases come from `main`. A GitHub Actions workflow opens a pull request into `main` when `dev`, `UAT`, or a `feature/*` branch is pushed.
 
 ## Branches
 
 | Branch | Role |
 | --- | --- |
-| `main` | Always releasable. Protected. |
-| `feat/<short-name>` | A new plugin, endpoint, or workflow |
+| `main` | Production. Always releasable. Protected. |
+| `dev` | Integration branch for ongoing work |
+| `UAT` | Acceptance / user-acceptance testing |
+| `feature/<short-name>` | A new plugin, endpoint, workflow, or docs change |
 | `fix/<short-name>` | A bug fix |
 | `docs/<short-name>` | Documentation only |
 | `plugin/<provider>` | A payment or commerce adapter |
 
-Create the branch from the current `main`. Delete it after the pull request merges.
-
-There are no long-lived `develop` or release branches. A hotfix is a `fix/` branch from `main`, merged back to `main`, then tagged as a patch release.
-
 ```mermaid
 gitGraph
-  commit id: "v0.1.0"
-  branch feat/adyen-plugin
-  commit id: "adapter"
+  commit id: "main"
+  branch dev
+  checkout dev
+  branch feature/example
+  checkout feature/example
+  commit id: "work"
+  checkout dev
+  merge feature/example id: "into-dev"
   checkout main
-  merge feat/adyen-plugin id: "squash"
-  commit id: "v0.2.0" tag: "v0.2.0"
+  branch UAT
+  checkout UAT
+  merge dev id: "into-UAT"
+  checkout main
+  merge UAT id: "PR-to-main"
 ```
+
+## Promotion flow
+
+1. Create a `feature/<short-name>` branch from `dev` (or from `main` for a hotfix).
+2. Open or merge the feature into `dev` for integration.
+3. Promote tested work from `dev` into `UAT` for acceptance.
+4. Promote accepted work into `main` for production.
+
+Every push to `dev`, `UAT`, or `feature/**` runs the **Open PR to main** workflow. That workflow creates a pull request targeting `main` when one is not already open for that head branch. CI must still pass on the pull request before merge.
+
+## Pipeline
+
+| Workflow | Trigger | Job |
+| --- | --- | --- |
+| `CI` | Push to `main`, and every pull request | Install and run `pytest` on Python 3.11 and 3.12 |
+| `Open PR to main` | Push to `dev`, `UAT`, or `feature/**` | Create or reuse a pull request into `main` |
 
 ## Protection on main
 
