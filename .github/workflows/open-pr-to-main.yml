@@ -8,7 +8,7 @@ on:
       - "feature/**"
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
@@ -16,35 +16,48 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref_name != 'main'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Ensure pull request into main
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HEAD_BRANCH: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const head = context.ref.replace(/^refs\/heads\//, '');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
 
-          existing="$(gh pr list --base main --head "$HEAD_BRANCH" --state open --json number --jq '.[0].number // empty')"
-          if [ -n "$existing" ]; then
-            echo "Open pull request #$existing already targets main from $HEAD_BRANCH."
-            gh pr view "$existing" --json url --jq .url
-            exit 0
-          fi
+            const existing = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: 'open',
+              head: `${owner}:${head}`,
+              base: 'main',
+            });
 
-          gh pr create \
-            --base main \
-            --head "$HEAD_BRANCH" \
-            --title "Promote ${HEAD_BRANCH} into main" \
-            --body "## Summary
-Automated pull request from \`${HEAD_BRANCH}\` into \`main\`.
+            if (existing.data.length > 0) {
+              core.info(`Open pull request #${existing.data[0].number} already targets main from ${head}.`);
+              core.info(existing.data[0].html_url);
+              return;
+            }
 
-## Source
-- Branch: \`${HEAD_BRANCH}\`
-- Commit: \`${GITHUB_SHA}\`
-- Workflow: Open PR to main
+            const created = await github.rest.pulls.create({
+              owner,
+              repo,
+              title: `Promote ${head} into main`,
+              head,
+              base: 'main',
+              body: [
+                '## Summary',
+                `Automated pull request from \`${head}\` into \`main\`.`,
+                '',
+                '## Source',
+                `- Branch: \`${head}\``,
+                `- Commit: \`${context.sha}\``,
+                '- Workflow: Open PR to main',
+                '',
+                '## Test plan',
+                '- [ ] CI is green on this pull request',
+                '- [ ] Reviewers confirm the change is ready for `main`',
+              ].join('\n'),
+            });
 
-## Test plan
-- [ ] CI is green on this pull request
-- [ ] Reviewers confirm the change is ready for \`main\`"
+            core.info(`Created pull request #${created.data.number}`);
+            core.info(created.data.html_url);
