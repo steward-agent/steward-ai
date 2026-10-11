@@ -21,7 +21,7 @@ from ecommerce_agent.plugins.money import to_minor
 from ecommerce_agent.plugins.flutterwave import FlutterwavePaymentPlugin
 from ecommerce_agent.plugins.paystack import PaystackPaymentPlugin
 from ecommerce_agent.plugins.payments import HttpPaymentPlugin, MockPaymentPlugin, StripePaymentPlugin
-from ecommerce_agent.plugins.shopify import ShopifyPaymentPlugin
+from ecommerce_agent.plugins.shopify import ShopifyCommercePlugin, ShopifyPaymentPlugin
 from ecommerce_agent.plugins.support_alert import SupportAlert
 from ecommerce_agent.redaction import redact
 from ecommerce_agent.reference import create_byo_app
@@ -429,6 +429,64 @@ def test_stripe_refund_uses_the_merchant_key_without_putting_it_in_the_body() ->
     assert result.id == "re_123"
     assert to_minor(Decimal("80.00"), "USD") == 8000
     assert to_minor(Decimal("1000"), "JPY") == 1000
+
+
+def test_shopify_commerce_records_a_return_note() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["X-Shopify-Access-Token"] == "shpat_secret"
+        if request.method == "GET" and request.url.path.endswith("/orders/1001.json"):
+            return httpx.Response(
+                200,
+                json={
+                    "order": {
+                        "id": 1001,
+                        "currency": "USD",
+                        "total_price": "80.00",
+                        "created_at": "2026-10-01T00:00:00Z",
+                        "customer": {"id": 1},
+                        "line_items": [{"sku": "hp-1", "title": "Headphones", "quantity": 1, "price": "80.00"}],
+                        "refunds": [],
+                    }
+                },
+            )
+        if request.method == "GET" and request.url.path.endswith("/transactions.json"):
+            return httpx.Response(
+                200,
+                json={"transactions": [{"id": 55, "kind": "sale", "status": "success", "amount": "80.00"}]},
+            )
+        if request.method == "PUT" and request.url.path.endswith("/orders/1001.json"):
+            seen["body"] = request.content.decode()
+            return httpx.Response(200, json={"order": {"id": 1001}})
+        return httpx.Response(404, json={"errors": "not found"})
+
+    plugin = ShopifyCommercePlugin(
+        shop=None,
+        secret_env="SHOPIFY_ADMIN_TOKEN",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        base_url="https://demo.myshopify.com",
+    )
+    secrets = MapSecrets({"SHOPIFY_ADMIN_TOKEN": "shpat_secret"})
+    ctx = CallContext("req", "return-key-1001", secrets)
+    order = plugin.get_order(ctx, "1001")
+    assert order.id == "1001"
+    assert order.payment_id == "55"
+    from ecommerce_agent.models import ReturnRequest
+
+    recorded = plugin.record_return(
+        ctx,
+        ReturnRequest(
+            order_id="1001",
+            amount=Decimal("40.00"),
+            currency="USD",
+            reason="requested_by_customer",
+        ),
+    )
+    assert recorded.status == "recorded"
+    assert "shpat_secret" not in str(seen["body"])
+    assert "agent-return" in str(seen["body"])
+    assert "40.00" in str(seen["body"])
 
 
 def test_shopify_refund_uses_the_shop_token_as_a_header() -> None:

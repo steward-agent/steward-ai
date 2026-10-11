@@ -95,7 +95,37 @@ result = agent.handle(
 
 Secrets such as `PAYMENT_API_KEY` stay in the server environment. The library reads them when it calls your provider and does not write them into settings, logs, or traces.
 
-To embed the widget, serve `ecommerce-agent.js` and sign a short-lived grant on your server. The signature uses `PLUGIN_SERVER_TOKEN`, which never goes in the browser. The browser only receives `PLUGIN_PUBLIC_TOKEN` plus the signature. See [docs/plugins.md](docs/plugins.md).
+### Embed the support panel
+
+Serve the agent from your server (or reverse proxy). The browser only gets the public token and a short-lived customer signature. `PLUGIN_SERVER_TOKEN` stays on your backend.
+
+**1. Sign a grant after the shopper logs in (your server):**
+
+```python
+import time
+from ecommerce_agent import sign_customer
+
+expires = int(time.time()) + 600  # at most 15 minutes
+signature = sign_customer(server_token, customer_ref, order_id, expires)
+```
+
+**2. Mount the widget on the store page:**
+
+```html
+<script src="https://your-agent.example/ecommerce-agent.js"></script>
+<script>
+  window.EcommerceAgent.mount({
+    endpoint: "https://your-agent.example",
+    publicToken: "PLUGIN_PUBLIC_TOKEN",
+    customerRef: "cust_1",
+    orderId: "1001",
+    customerExpires: 1700000000,
+    customerSignature: "hex hmac from your backend"
+  });
+</script>
+```
+
+Replace `your-agent.example` with your agent URL, and pass the `expires` and `signature` values from step 1. The widget refuses card numbers. Full contract details are in [docs/plugins.md](docs/plugins.md).
 
 ## Payment plugins
 
