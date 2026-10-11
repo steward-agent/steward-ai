@@ -1,0 +1,63 @@
+name: Open PR to main
+
+on:
+  push:
+    branches:
+      - dev
+      - UAT
+      - "feature/**"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  open-pr:
+    runs-on: ubuntu-latest
+    if: github.ref_name != 'main'
+    steps:
+      - name: Ensure pull request into main
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const head = context.ref.replace(/^refs\/heads\//, '');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const existing = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: 'open',
+              head: `${owner}:${head}`,
+              base: 'main',
+            });
+
+            if (existing.data.length > 0) {
+              core.info(`Open pull request #${existing.data[0].number} already targets main from ${head}.`);
+              core.info(existing.data[0].html_url);
+              return;
+            }
+
+            const created = await github.rest.pulls.create({
+              owner,
+              repo,
+              title: `Promote ${head} into main`,
+              head,
+              base: 'main',
+              body: [
+                '## Summary',
+                `Automated pull request from \`${head}\` into \`main\`.`,
+                '',
+                '## Source',
+                `- Branch: \`${head}\``,
+                `- Commit: \`${context.sha}\``,
+                '- Workflow: Open PR to main',
+                '',
+                '## Test plan',
+                '- [ ] CI is green on this pull request',
+                '- [ ] Reviewers confirm the change is ready for `main`',
+              ].join('\n'),
+            });
+
+            core.info(`Created pull request #${created.data.number}`);
+            core.info(created.data.html_url);
