@@ -45,7 +45,7 @@ Every push to `dev`, `UAT`, or `feature/**` runs the **Open PR to main** workflo
 
 | Workflow | Trigger | Job |
 | --- | --- | --- |
-| `CI` | Push to `main`, and every pull request | Install and run `pytest` on Python 3.11 and 3.12 |
+| `CI` | Push to `main`, `dev`, `UAT`, or `feature/**`; pull requests; manual run | Install the package, run `pytest` with coverage on Python 3.11, 3.12, and 3.13, then gate on an All checks job |
 | `Open PR to main` | Push to `dev`, `UAT`, or `feature/**` | Create or reuse a pull request into `main` |
 
 ## Protection on main

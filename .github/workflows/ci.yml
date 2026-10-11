@@ -5,20 +5,60 @@ on:
     branches: [main, dev, UAT, "feature/**"]
   pull_request:
     branches: [main, dev, UAT]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
+    name: Test Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install
+          cache: pip
+
+      - name: Install package and test tools
         run: pip install -e ".[dev]"
-      - name: Test
-        run: pytest
+
+      - name: Run tests with coverage
+        run: >
+          pytest -q
+          --cov=ecommerce_agent
+          --cov-report=term-missing
+          --cov-report=xml
+          --junitxml=junit.xml
+
+      - name: Upload coverage report
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python-3.12
+          path: |
+            coverage.xml
+            junit.xml
+          if-no-files-found: error
+
+  ci:
+    name: All checks
+    needs: [test]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Require the test matrix to pass
+        run: |
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "One or more Python test jobs failed."
+            exit 1
+          fi
+          echo "All code tests passed."
