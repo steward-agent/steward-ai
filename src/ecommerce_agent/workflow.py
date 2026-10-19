@@ -231,12 +231,14 @@ class AgentApp:
         except ToolError:
             return self._result(draft, Intent.REFUND, Outcome.FAILED, "That order was not found in the store. No refund was sent.", key)
         if not _customer_ok(order, request, caller):
+            draft.decision = "customer_mismatch"
             return self._result(draft, Intent.REFUND, Outcome.DENIED, "That order does not match the signed-in customer. No refund was sent.", key)
         draft.nodes.append("retriever")
         hit = self.retriever.search(redacted or reason or "return refund")
         draft.retrieval_score = hit.score if hit else None
         window = self._window(hit.excerpt if hit else "")
-        amount = request.amount or order.refundable
+        eligible = _eligible_amount(order, self.rules)
+        amount = request.amount or (eligible if eligible else order.refundable)
         currency = check_currency(request.currency or order.currency)
         support_line = self._support_line()
         decision = _guardrail(
@@ -250,11 +252,13 @@ class AgentApp:
             limit=self.settings.auto_approve_below,
             support_alert_above=support_line,
             rules=self.rules,
+            eligible=eligible,
         )
         draft.nodes.append("guardrails")
+        draft.decision = decision
         if decision == "invalid_amount":
             return self._result(draft, Intent.REFUND, Outcome.DENIED, "The refund amount is not available on that order. No refund was sent.", key)
-        if decision == "currency":
+        if decision == "currency_mismatch":
             return self._result(draft, Intent.REFUND, Outcome.DENIED, "The refund currency does not match the order. No refund was sent.", key)
         if decision == "currency_not_accepted":
             return self._result(draft, Intent.REFUND, Outcome.DENIED, f"The store payment policy does not accept {currency}. No refund was sent.", key)
@@ -262,13 +266,10 @@ class AgentApp:
             return self._result(draft, Intent.REFUND, Outcome.DENIED, f"Order {order.id} is outside the {window}-day return window, so no refund was sent.", key)
         if decision == "non_refundable":
             blocked = blocked_item_name(order.items, self.rules.non_refundable) or "an item"
-            return self._result(
-                draft,
-                Intent.REFUND,
-                Outcome.DENIED,
-                f"Order {order.id} includes {blocked}, which the refund policy lists as non-refundable. No refund was sent.",
-                key,
-            )
+            message = f"Order {order.id} includes {blocked}, which the refund policy lists as non-refundable. No refund was sent."
+            if eligible and self.rules.partial_refunds is not False:
+                message += f" You can request up to {format(eligible, 'f')} {currency} for the other items."
+            return self._result(draft, Intent.REFUND, Outcome.DENIED, message, key)
         if decision == "partial":
             return self._result(
                 draft,
@@ -277,7 +278,7 @@ class AgentApp:
                 f"The refund policy allows only a full refund of the remaining {format(order.refundable, 'f')} {currency}. No refund was sent.",
                 key,
             )
-        items = _item_label(order)
+        items = _item_label(order, self.rules)
         if decision == "auto":
             return self._execute_refund(ctx, draft, order, amount, currency, reason, key, items)
         approval_request = ApprovalRequest(
@@ -597,6 +598,7 @@ class AgentApp:
             message=message,
             actions=actions or [],
             idempotency_key=key,
+            decision=draft.decision,
         )
 
 
@@ -622,17 +624,18 @@ def _guardrail(
     limit: Decimal,
     support_alert_above: Decimal,
     rules,
+    eligible: Decimal | None = None,
 ) -> str:
     if amount <= 0 or amount > order.refundable:
         return "invalid_amount"
     if currency != order.currency.upper():
-        return "currency"
+        return "currency_mismatch"
     if rules.accepted_currencies and currency not in rules.accepted_currencies:
         return "currency_not_accepted"
     age = now - order.created_at
     if age.days > window_days:
         return "window"
-    if blocked_item_name(order.items, rules.non_refundable):
+    if eligible is not None and (rules.partial_refunds is False or amount > eligible):
         return "non_refundable"
     if rules.partial_refunds is False and amount < order.refundable:
         return "partial"
@@ -681,8 +684,17 @@ def _pretty(value: Decimal) -> str:
     return text or "0"
 
 
-def _item_label(order: Order) -> str:
-    names = [item.name for item in order.items]
+def _eligible_amount(order: Order, rules) -> Decimal | None:
+    """Balance left after non-refundable lines. None when the policy excludes no line on the order."""
+
+    kept = [item for item in order.items if not blocked_item_name([item], rules.non_refundable)]
+    if len(kept) == len(order.items):
+        return None
+    return min(order.refundable, sum((item.amount for item in kept), Decimal("0")))
+
+
+def _item_label(order: Order, rules) -> str:
+    names = [item.name for item in order.items if not blocked_item_name([item], rules.non_refundable)]
     return ", ".join(names) if names else "this order"
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+Release prep copies each `feat` and `fix` squash subject from `main` into **Unreleased**, then renames that heading to the new version. See [Releases](docs/git-strategy.md#releases).
+
+Entry format: `- <type>: <subject> (#<pull request>)`, grouped under **Added** for `feat` and **Fixed** for `fix`.
+
+## Unreleased
+
+### Added
+
+- feat: accept the `Idempotency-Key` header on refund and message requests
+- feat: return a `decision` code with every guardrail refusal
+- feat: refund only the refundable lines of an order that also holds non-refundable items
+
+### Fixed
+
+- fix: make the Langfuse redaction test independent of random event ids
+
 ## 0.1.0
 
 First open-source release.
