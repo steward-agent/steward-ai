@@ -15,6 +15,8 @@ The same bar on every page:
 
 Overview is the landing page. GitHub opens the open-source repository.
 
+The footer on every page links to the legal pages: Privacy, Data privacy, Terms, and Cookies.
+
 ## Who it is for
 
 A merchant, a store operator, or a developer deciding whether to install the plugin.
@@ -48,6 +50,8 @@ Design these four pages. Desktop and a 390px-wide phone for each.
 2. About
 3. GitHub, open source
 4. Contact
+
+The legal pages share one plain text layout. See section 5.
 
 ---
 
@@ -173,6 +177,17 @@ A short note under the form: Do not send card numbers or payment keys.
 
 ---
 
+## 5. Legal pages
+
+One text column each. No forms.
+
+- **Privacy.** What the website collects: the contact form fields only. They are used to reply and are not sold.
+- **Data privacy.** The agent runs on the store's own server. Shopper messages are not stored after the reply. Card numbers stay at the payment provider. Signals keep timings and counts, not shopper text.
+- **Terms.** The software is MIT licensed and provided as is. The store is responsible for its payment provider account and its refund decisions. Matches `TERMS.md` in the repository.
+- **Cookies.** The website uses only the cookies it needs to work. No advertising or tracking cookies.
+
+---
+
 ## What every screen must leave out
 
 - A shop grid, a cart, or a checkout
@@ -183,4 +198,4 @@ A short note under the form: Do not send card numbers or payment keys.
 
 ## Suggested delivery
 
-One desktop frame and one phone frame for each of the four pages. The Overview frames include the demo.
+One desktop frame and one phone frame for each of the four pages. The Overview frames include the demo. One shared frame pair covers the legal pages.

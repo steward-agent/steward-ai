@@ -76,6 +76,37 @@ def test_public_widget_return_above_50_alerts_support() -> None:
     assert agent.payment.payments["pay_1001"]["refunded"] == Decimal("0")
 
 
+def _signed_refund(key: str | None = None) -> dict:
+    expires = int(time.time()) + 600
+    body = {
+        "customer_ref": "cust_1",
+        "order_id": "1001",
+        "customer_signature": sign_customer(SERVER, "cust_1", "1001", expires),
+        "customer_expires": expires,
+    }
+    if key:
+        body["idempotency_key"] = key
+    return body
+
+
+def test_refund_accepts_the_idempotency_key_header() -> None:
+    client, _agent = _client()
+    response = client.post(
+        "/v1/refunds",
+        headers={"Authorization": f"Bearer {PUBLIC}", "Idempotency-Key": "header-refund-1001"},
+        json=_signed_refund(),
+    )
+    assert response.status_code == 200
+    assert response.json()["idempotency_key"] == "header-refund-1001"
+
+    clash = client.post(
+        "/v1/refunds",
+        headers={"Authorization": f"Bearer {PUBLIC}", "Idempotency-Key": "header-refund-1001"},
+        json=_signed_refund("body-refund-1001"),
+    )
+    assert clash.status_code == 422
+
+
 def test_server_trace_is_visible_and_slis_require_the_server_token() -> None:
     client, _agent = _client()
     public = client.get("/v1/slis", headers={"Authorization": f"Bearer {PUBLIC}"})

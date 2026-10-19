@@ -13,7 +13,7 @@ from ecommerce_agent.exporters import langfuse_batch
 from ecommerce_agent.gateway import Gateway, sign_customer
 from ecommerce_agent.logging import configure_logging, get_logger
 from ecommerce_agent.models import Caller, Intent, Order, Outcome, PolicyDocument, Scope, UserRequest
-from ecommerce_agent.observability import SignalRecord, summarize
+from ecommerce_agent.observability import SignalDraft, SignalRecord, summarize
 from ecommerce_agent.plugins.approval import ThresholdApproval, WebhookApproval
 from ecommerce_agent.plugins.commerce import HttpCommercePlugin, MockCommercePlugin
 from ecommerce_agent.plugins.http_client import CallContext
@@ -535,7 +535,10 @@ def test_logs_and_langfuse_payloads_omit_secrets(caplog: pytest.LogCaptureFixtur
     encoded = str(payload)
     assert PAN not in encoded
     assert "hidden" not in encoded
-    assert "1001" not in encoded
+    # The random event id and timestamp can contain "1001" by chance, so check the structured fields.
+    body = payload["batch"][0]["body"]
+    assert "order_id" not in body["metadata"]
+    assert "1001" not in str(body["metadata"]) + str(body["tags"])
 
 
 def test_signal_summary_uses_the_five_signals() -> None:
@@ -596,6 +599,7 @@ def test_paystack_refund_uses_the_merchant_key_in_kobo() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         body = request.content.decode()
         assert request.headers["Authorization"] == "Bearer sk_paystack_test"
+        assert request.headers["Idempotency-Key"] == "refund-key-1001"
         assert "sk_paystack_test" not in body
         assert '"amount": 8000' in body or '"amount":8000' in body
         assert "pi_or_ref" in body
@@ -615,6 +619,7 @@ def test_flutterwave_refund_and_quote_use_the_merchant_key() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["Authorization"] == "Bearer flw_secret"
+        assert request.headers["Idempotency-Key"] in {"refund-key-1001", "quote-key-1001"}
         assert "flw_secret" not in (request.content.decode() if request.content else "")
         if request.url.path.endswith("/refund"):
             return httpx.Response(200, json={"status": "success", "data": {"id": 7, "status": "completed"}})
@@ -701,6 +706,98 @@ def test_refund_rules_block_non_refundable_partial_and_a_tighter_window() -> Non
     assert late.outcome is Outcome.DENIED
     assert "10-day" in late.message
     assert payment.calls == []
+
+
+MIXED_RULES = PolicyDocument(
+    id="refunds",
+    title="Refund policy",
+    text="You can return headphones within 30 days.\n```rules\npartial_refunds: yes\nnon_refundable: gift card\n```\n",
+)
+
+
+def _mixed_order() -> Order:
+    return Order.model_validate(
+        {
+            **_order(5, "60.00").model_dump(),
+            "items": [
+                {"sku": "hp-1", "name": "Headphones", "quantity": 1, "amount": "40.00"},
+                {"sku": "gc-1", "name": "Gift card", "quantity": 1, "amount": "20.00"},
+            ],
+        }
+    )
+
+
+def test_mixed_order_refunds_only_the_refundable_lines() -> None:
+    agent, payment, _commerce = _agent(order=_mixed_order(), policies=[MIXED_RULES])
+    result = agent.handle(_refund(), Caller(scope=Scope.SERVER))
+    assert result.outcome is Outcome.COMPLETED
+    assert payment.payments["pay_1001"]["refunded"] == Decimal("40.00")
+    assert "Gift card" not in result.message
+
+    agent, payment, _commerce = _agent(order=_mixed_order(), policies=[MIXED_RULES])
+    too_much = agent.handle(_refund(amount="60.00"), Caller(scope=Scope.SERVER))
+    assert too_much.outcome is Outcome.DENIED
+    assert too_much.decision == "non_refundable"
+    assert "up to 40.00 USD" in too_much.message
+    assert payment.calls == []
+
+
+def test_mixed_order_is_refused_when_partial_refunds_are_off() -> None:
+    agent, payment, _commerce = _agent(order=_mixed_order(), policies=[REFUND_RULES])
+    result = agent.handle(_refund(), Caller(scope=Scope.SERVER))
+    assert result.outcome is Outcome.DENIED
+    assert result.decision == "non_refundable"
+    assert "up to" not in result.message
+    assert payment.calls == []
+
+
+def test_rules_fence_window_beats_a_longer_faq_mention() -> None:
+    faq = PolicyDocument(id="faq", title="FAQ", text="Can I return headphones? Most returns are accepted within 90 days.")
+    agent, payment, _commerce = _agent(order=_order(12, "40.00"), policies=[faq, REFUND_RULES])
+    result = agent.handle(_refund(), Caller(scope=Scope.SERVER))
+    assert result.outcome is Outcome.DENIED
+    assert result.decision == "window"
+    assert "10-day" in result.message
+    assert payment.calls == []
+
+
+def test_return_window_setting_wins_when_stricter_than_policy() -> None:
+    agent, payment, _commerce = _agent(order=_order(8, "40.00"), policies=[MIXED_RULES])
+    agent.settings = agent.settings.model_copy(update={"return_window_days": 7})
+    result = agent.handle(_refund(), Caller(scope=Scope.SERVER))
+    assert result.outcome is Outcome.DENIED
+    assert "7-day" in result.message
+    assert payment.calls == []
+
+
+def test_refusals_carry_a_decision_code() -> None:
+    agent, payment, _commerce = _agent(order=_order(5, "40.00"))
+    currency = agent.handle(_refund(currency="EUR"), Caller(scope=Scope.SERVER))
+    assert currency.outcome is Outcome.DENIED
+    assert currency.decision == "currency_mismatch"
+
+    other = agent.handle(_refund(customer_ref="cust_2"), Caller(scope=Scope.PUBLIC))
+    assert other.outcome is Outcome.DENIED
+    assert other.decision == "customer_mismatch"
+    assert payment.calls == []
+
+
+def test_signal_ring_is_capped_and_holds_no_customer_text() -> None:
+    from ecommerce_agent.observability import Observability
+
+    agent, _payment, _commerce = _agent()
+    agent.handle(
+        UserRequest(message=f"card {PAN} email me@example.com key sk_test_abc123", intent=None),
+        Caller(scope=Scope.SERVER),
+    )
+    stored = str(agent.observability._records)
+    for value in (PAN, "me@example.com", "sk_test_abc123"):
+        assert value not in stored
+
+    ring = Observability(limit=3)
+    for index in range(5):
+        ring.record(SignalDraft(request_id=f"req-{index}"))
+    assert ring.snapshot()["requests"] == 3
 
 
 def test_policy_support_line_can_be_stricter_than_the_setting() -> None:

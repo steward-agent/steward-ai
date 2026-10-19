@@ -168,15 +168,25 @@ def create_api(agent: AgentApp, gateway: Gateway) -> FastAPI:
         return agent.observability.snapshot()
 
     @app.post("/v1/messages")
-    def messages(body: MessageIn, authorization: str | None = Header(default=None)):
+    def messages(
+        body: MessageIn,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ):
         caller = _admit(gateway, authorization)
+        body = _with_idempotency_header(body, idempotency_key)
         access = _order_access(agent, gateway, caller.scope, body)
         result = agent.handle(_user_request(body, access, intent=None), caller)
         return _public_body(result, caller.scope)
 
     @app.post("/v1/refunds")
-    def refunds(body: RefundIn, authorization: str | None = Header(default=None)):
+    def refunds(
+        body: RefundIn,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ):
         caller = _admit(gateway, authorization)
+        body = _with_idempotency_header(body, idempotency_key)
         access = _order_access(agent, gateway, caller.scope, body)
         try:
             amount = parse_positive_money(body.amount) if body.amount else None
@@ -330,6 +340,20 @@ def _order_access(agent: AgentApp, gateway: Gateway, scope: Scope, body: Message
         body.customer_expires,
         body.customer_signature,
     )
+
+
+def _with_idempotency_header(body: MessageIn, header: str | None) -> MessageIn:
+    """Let clients send the key as the Idempotency-Key header, the body field, or both when they agree."""
+
+    if header is None:
+        return body
+    try:
+        key = check_idempotency_key(header)
+    except PluginConfigError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    if body.idempotency_key and body.idempotency_key != key:
+        raise HTTPException(status_code=422, detail="Idempotency-Key header and idempotency_key differ")
+    return body.model_copy(update={"idempotency_key": key})
 
 
 def _user_request(body: MessageIn, order_access: bool, intent: Intent | None) -> UserRequest:

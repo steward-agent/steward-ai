@@ -48,6 +48,8 @@ The website token cannot upload rules. A file that contains a card number or a p
 
 The agent enforces `return_window_days`, `partial_refunds`, `non_refundable`, `support_alert_above`, `currency_conversion`, and `accepted_currencies`. A rule that is stricter than the matching environment setting wins. Customer match, currency match with the order, and the refusal to store card numbers stay on even when a file omits them.
 
+On an order that mixes refundable and `non_refundable` lines, a full refund request covers only the refundable lines when `partial_refunds` is `yes`. A request for more than that, or any refund on a mixed order when `partial_refunds` is `no`, is refused.
+
 Shopper questions are answered from the FAQ whose heading matches. A question about settlement or conversion, with no amount to quote, stays a question.
 
 ```rules
@@ -63,13 +65,32 @@ accepted_currencies: USD, EUR, GBP, NGN
 
 A refund above `SUPPORT_ALERT_ABOVE` (default `50.00` in the order currency) is posted to `SUPPORT_ALERT_URL` and is not sent to the payment provider until `APPROVAL_WEBHOOK_URL` returns `{"decision": "approved"}`. The alert contains the order id, amount, currency, and a redacted reason. It does not contain card numbers or provider secrets.
 
+## Refund responses
+
+`POST /v1/refunds` and `POST /v1/messages` accept the key as an `Idempotency-Key` header, as the `idempotency_key` body field, or both when they match. A header and body that differ return `422`. The agent passes the key to the commerce and payment plugins, which forward it to the provider. Without a key, the agent derives one from the store, the order, and the amount.
+
+When a guardrail decides the outcome, the response carries a `decision` code next to the human-readable `message`:
+
+| `decision` | Meaning |
+| --- | --- |
+| `customer_mismatch` | The signed-in customer does not own the order |
+| `invalid_amount` | Zero, negative, or more than the refundable balance |
+| `currency_mismatch` | The refund currency is not the order currency |
+| `currency_not_accepted` | The payment policy does not accept the currency |
+| `window` | The order is outside the return window |
+| `non_refundable` | The order holds a non-refundable item or SKU |
+| `partial` | The policy allows only a full refund |
+| `support` | Above the support line; waiting for support |
+| `approval` | Waiting for, or decided by, the approver |
+| `auto` | Inside every rule; sent to the payment provider |
+
 ## byo-v1 contract
 
 Version: `byo-v1`.
 
 Your adapter holds the provider SDK and the provider secret. Ecommerce Agent calls your adapter with a bearer token you issued for the agent. Amounts are decimal strings. Ids match `^[A-Za-z0-9_-]{1,64}$`.
 
-Send `Idempotency-Key` through to the provider on refunds, captures, and payment creation. A repeated key returns the original result and does not move money again.
+Every call from the agent carries an `Idempotency-Key` header, and the request bodies below repeat it as `idempotency_key`. Send it through to the provider on refunds, captures, and payment creation. A repeated key returns the original result and does not move money again.
 
 ### `POST /v1/refunds`
 

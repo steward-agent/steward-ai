@@ -57,6 +57,7 @@ class SignalDraft:
     queue_depth: int = 0
     queue_wait_ms: float | None = None
     nodes: list[str] = field(default_factory=list)
+    decision: str | None = None
 
     def freeze(self) -> SignalRecord:
         return SignalRecord(

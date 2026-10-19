@@ -24,7 +24,7 @@ Use Python 3.11 or newer.
 
 ## Safety checklist
 
-Every change that touches payments, prompts, logs, or traces needs all of these:
+Every change that touches payments, prompts, logs, or traces needs all of these. The [pull request template](.github/PULL_REQUEST_TEMPLATE.md) repeats the same list.
 
 - Provider secrets are read from the environment at call time and are not stored on settings, traces, or error messages.
 - Card numbers and provider keys are redacted before text reaches a model, a log, or an approval webhook.
@@ -36,12 +36,19 @@ Every change that touches payments, prompts, logs, or traces needs all of these:
 
 ## Add a payment plugin
 
+The built-in plugins show the shape. They are registered in `pyproject.toml`:
+
+| Group | Names |
+| --- | --- |
+| `ecommerce_agent.payment_plugins` | `mock`, `http`, `stripe`, `paystack`, `flutterwave`, `shopify` |
+| `ecommerce_agent.commerce_plugins` | `mock`, `http`, `shopify` |
+
 1. Implement `refund`, `quote_conversion`, `create_payment`, and `settlement` on a class in your package.
 2. Register it with the entry point group `ecommerce_agent.payment_plugins`.
 3. Read the merchant's secret from `CallContext.secrets` inside each call.
 4. Honor `Idempotency-Key` on the provider request.
 5. Raise `ToolError` with a fixed message. Do not attach the provider body if it may contain a customer record or a secret.
-6. Add a `MockTransport` test that asserts the secret is a header and is absent from the body and the URL.
+6. Add a `MockTransport` test that asserts the secret is a header and is absent from the body and the URL. `test_paystack_refund_uses_the_merchant_key_in_kobo` in [tests/test_agent.py](tests/test_agent.py) is a short example to copy.
 
 Commerce plugins use the group `ecommerce_agent.commerce_plugins` and the methods `get_order` and `record_return`. `record_return` records the return. The payment plugin is what moves the money, so a commerce plugin must not also refund unless it is explicitly the payment plugin.
 

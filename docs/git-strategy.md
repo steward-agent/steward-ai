@@ -77,7 +77,7 @@ The subject is imperative and specific: `fix: deny public capture of unsettled p
 
 The squash commit on `main` is the message that appears in history. Write that message in the pull request title.
 
-`feat` and `fix` entries are copied into `CHANGELOG.md` before a release.
+`feat` and `fix` entries are copied into the **Unreleased** section of `CHANGELOG.md` before a release. The changelog header shows the entry format.
 
 ## Pull requests
 
@@ -108,7 +108,7 @@ Deprecations last at least one minor release. The changelog names the replacemen
 ## Releases
 
 1. `main` is green.
-2. Update `CHANGELOG.md` and the version in `pyproject.toml` and `src/ecommerce_agent/version.py`.
+2. Run `git log --format=%s vPREVIOUS..main | grep -E '^(feat|fix)'`, copy those subjects into **Unreleased** in `CHANGELOG.md`, and rename that heading to `X.Y.Z`. Bump the version in `pyproject.toml` and `src/ecommerce_agent/version.py`.
 3. Merge that release pull request.
 4. Tag `vX.Y.Z` on the merge commit and push the tag.
 5. Publish the GitHub release from the tag notes in the changelog.

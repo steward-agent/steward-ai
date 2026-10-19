@@ -238,6 +238,7 @@ class AgentResult(BaseModel):
     message: str
     actions: list[ActionRecord] = Field(default_factory=list)
     idempotency_key: str | None = None
+    decision: str | None = None
     trace: dict = Field(default_factory=dict)
 
 
