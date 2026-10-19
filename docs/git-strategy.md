@@ -57,6 +57,8 @@ Every push to `dev`, `UAT`, or `feature/**` runs the **Open PR to main** workflo
 
 If the org keeps workflow tokens read-only, add a repository secret `STEWARD_PR_TOKEN` (classic or fine-grained PAT with pull-request write on `steward-agent/steward-ai`). The workflow prefers that secret over `GITHUB_TOKEN`.
 
+Until one of these is in place, the workflow logs a warning, skips the pull request, and still succeeds. Open the pull request into `main` by hand.
+
 When `head` and `main` share the same history, the workflow logs that no pull request is needed and exits successfully.
 
 ## Protection on main

@@ -74,8 +74,9 @@ jobs:
               }
 
               if (status === 403 && /not permitted to create or approve pull requests/i.test(message)) {
-                core.setFailed([
-                  'GitHub Actions cannot create pull requests with the current token.',
+                // Warn instead of failing: the push is fine, only the automatic PR is skipped.
+                core.warning([
+                  'GitHub Actions cannot create pull requests with the current token. Open the pull request by hand.',
                   '',
                   'Fix one of the following:',
                   '1) Org admin: https://github.com/organizations/steward-agent/settings/actions',
