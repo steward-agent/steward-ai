@@ -48,6 +48,19 @@ Every push to `dev`, `UAT`, or `feature/**` runs the **Open PR to main** workflo
 | `CI` | Push to `main`, `dev`, `UAT`, or `feature/**`; pull requests; manual run | Install the package, run `pytest` with coverage on Python 3.11, 3.12, and 3.13, then gate on an All checks job |
 | `Open PR to main` | Push to `dev`, `UAT`, or `feature/**` | Create or reuse a pull request into `main` |
 
+### Actions permission for Open PR to main
+
+`GITHUB_TOKEN` can create pull requests only when the organization allows it. An org admin sets this under [Organization Actions settings](https://github.com/organizations/steward-agent/settings/actions):
+
+1. Workflow permissions → **Read and write permissions**
+2. Enable **Allow GitHub Actions to create and approve pull requests**
+
+If the org keeps workflow tokens read-only, add a repository secret `STEWARD_PR_TOKEN` (classic or fine-grained PAT with pull-request write on `steward-agent/steward-ai`). The workflow prefers that secret over `GITHUB_TOKEN`.
+
+Until one of these is in place, the workflow logs a warning, skips the pull request, and still succeeds. Open the pull request into `main` by hand.
+
+When `head` and `main` share the same history, the workflow logs that no pull request is needed and exits successfully.
+
 ## Protection on main
 
 Maintainers turn these on in the host settings:
