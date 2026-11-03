@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import threading
 import time
 import uuid
@@ -176,7 +177,11 @@ class AgentApp:
 
     def _key(self, request: UserRequest, action: str, parts: list[str]) -> str:
         if request.idempotency_key:
-            return check_idempotency_key(request.idempotency_key)
+            # A client key is unique only to that client. Bind it to this merchant, action, and order so it
+            # cannot replay another order's result. Derived keys below never contain ":", so the two cannot meet.
+            client = check_idempotency_key(request.idempotency_key)
+            scope = ":".join([self.settings.merchant_id, action, request.order_id or "-", client])
+            return f"{action}:{hashlib.sha256(scope.encode()).hexdigest()[:32]}"
         raw = ":".join([self.settings.merchant_id, action, *parts])
         compact = "".join(character if character.isalnum() else "-" for character in raw)[:80]
         if len(compact) < 8:

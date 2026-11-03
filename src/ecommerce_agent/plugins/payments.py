@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from decimal import Decimal
 
@@ -336,4 +337,8 @@ class StripePaymentPlugin:
 
 
 def _scoped_key(base: str, payment_id: str) -> str:
-    return f"{base}-{payment_id}"[:80]
+    key = f"{base}-{payment_id}"
+    if len(key) <= 80:
+        return key
+    # Truncating could drop the payment id and give two captures one key.
+    return f"{base[:40]}-{hashlib.sha256(key.encode()).hexdigest()[:32]}"

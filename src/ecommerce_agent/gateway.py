@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 import re
+import threading
 import time
+from collections import OrderedDict
 
 from ecommerce_agent.errors import Forbidden, PluginConfigError, RateLimited, Unauthorized
 from ecommerce_agent.models import Caller, Scope
@@ -13,6 +15,7 @@ from ecommerce_agent.secrets import SecretSource
 from ecommerce_agent.settings import Settings
 
 MAX_SIGNATURE_TTL_SECONDS = 15 * 60
+MAX_TRACKED_CLIENTS = 10_000
 ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 CUSTOMER_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 IDEMPOTENCY_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{8,80}$")
@@ -88,26 +91,48 @@ class RateLimiter:
         self.tokens = float(self.capacity)
         self.refill_per_sec = self.capacity / 60
         self.updated = time.monotonic()
+        self._lock = threading.Lock()
 
     def allow(self) -> bool:
-        now = time.monotonic()
-        elapsed = now - self.updated
-        self.updated = now
-        self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_per_sec)
-        if self.tokens >= 1:
-            self.tokens -= 1
-            return True
-        return False
+        with self._lock:
+            now = time.monotonic()
+            elapsed = now - self.updated
+            self.updated = now
+            self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_per_sec)
+            if self.tokens >= 1:
+                self.tokens -= 1
+                return True
+            return False
+
+
+class ClientRateLimiter:
+    """One bucket per client address. The public token is in the page, so one client must not drain the rest."""
+
+    def __init__(self, rpm: int, max_clients: int = MAX_TRACKED_CLIENTS) -> None:
+        self.rpm = rpm
+        self.max_clients = max_clients
+        self._buckets: OrderedDict[str, RateLimiter] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def allow(self, client: str) -> bool:
+        with self._lock:
+            bucket = self._buckets.get(client)
+            if bucket is None:
+                bucket = RateLimiter(self.rpm)
+                self._buckets[client] = bucket
+                if len(self._buckets) > self.max_clients:
+                    self._buckets.popitem(last=False)
+            else:
+                self._buckets.move_to_end(client)
+        return bucket.allow()
 
 
 class Gateway:
     def __init__(self, settings: Settings, secrets: SecretSource) -> None:
         self.settings = settings
         self.secrets = secrets
-        self._limiters = {
-            Scope.PUBLIC: RateLimiter(settings.rate_limit_rpm),
-            Scope.SERVER: RateLimiter(settings.rate_limit_rpm),
-        }
+        self._public_limiter = ClientRateLimiter(settings.rate_limit_rpm)
+        self._server_limiter = RateLimiter(settings.rate_limit_rpm)
         public = secrets.get(settings.public_token_env)
         server = secrets.get(settings.server_token_env)
         if public and server and public == server:
@@ -129,9 +154,12 @@ class Gateway:
             return Caller(scope=Scope.PUBLIC)
         raise Unauthorized("unauthorized")
 
-    def enforce_rate_limit(self, caller: Caller) -> None:
-        limiter = self._limiters[caller.scope]
-        if not limiter.allow():
+    def enforce_rate_limit(self, caller: Caller, client: str | None = None) -> None:
+        if caller.scope == Scope.SERVER:
+            allowed = self._server_limiter.allow()
+        else:
+            allowed = self._public_limiter.allow(client or "unknown")
+        if not allowed:
             raise RateLimited(retry_after=1)
 
     def require_server(self, caller: Caller) -> None:
