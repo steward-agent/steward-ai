@@ -14,6 +14,9 @@ Do not include live provider keys or card numbers in the report. A redacted requ
 - Shopper order access from the widget requires an HMAC signed by the server token, limited to 15 minutes.
 - Order ids are rejected when they could change a URL path.
 - Provider error bodies are not returned to the shopper.
+- A shopper's idempotency key is bound to their order, so it cannot replay or block another order's refund.
+- Provider base URLs must use https, except on localhost.
+- Public requests are rate limited per client address, so one client cannot lock out the widget for other shoppers.
 - The language model is not given a tool handle.
 
 ## What you configure
@@ -23,6 +26,7 @@ Do not include live provider keys or card numbers in the report. A redacted requ
 - `APPROVAL_PLUGIN=threshold` only when you intend small refunds to proceed without a person.
 - An approval webhook that authenticates the caller and returns `approved` only for refunds you want sent.
 - CORS origins listed explicitly. A wildcard is rejected.
+- Behind a load balancer or reverse proxy, run uvicorn with `--proxy-headers` and `--forwarded-allow-ips` set to the proxy address, so per-client rate limits see the shopper's address and not the proxy's.
 - Network access so the process can reach only your payment adapter, your commerce adapter, and the approval webhook you set.
 
 ## Out of scope

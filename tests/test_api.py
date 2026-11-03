@@ -97,7 +97,12 @@ def test_refund_accepts_the_idempotency_key_header() -> None:
         json=_signed_refund(),
     )
     assert response.status_code == 200
-    assert response.json()["idempotency_key"] == "header-refund-1001"
+    via_body = client.post(
+        "/v1/refunds",
+        headers={"Authorization": f"Bearer {PUBLIC}"},
+        json=_signed_refund("header-refund-1001"),
+    )
+    assert response.json()["idempotency_key"] == via_body.json()["idempotency_key"]
 
     clash = client.post(
         "/v1/refunds",
@@ -147,6 +152,26 @@ def test_rate_limit_is_a_429() -> None:
     assert first.status_code == 200
     assert second.status_code == 429
     assert second.headers["retry-after"] == "1"
+
+
+def test_one_public_client_cannot_use_up_the_limit_for_others() -> None:
+    client, _agent = _client(rpm=1)
+    headers = {"Authorization": f"Bearer {PUBLIC}"}
+    assert client.post("/v1/messages", headers=headers, json={"message": "hi"}).status_code == 200
+    assert client.post("/v1/messages", headers=headers, json={"message": "hi"}).status_code == 429
+    other = TestClient(client.app, client=("203.0.113.9", 5000))
+    assert other.post("/v1/messages", headers=headers, json={"message": "hi"}).status_code == 200
+
+
+def test_client_rate_limiter_tracks_a_bounded_number_of_clients() -> None:
+    from ecommerce_agent.gateway import ClientRateLimiter
+
+    limiter = ClientRateLimiter(rpm=1, max_clients=2)
+    assert limiter.allow("a")
+    assert limiter.allow("b")
+    assert limiter.allow("c")
+    assert len(limiter._buckets) == 2
+    assert not limiter.allow("c")
 
 
 def test_provider_keys_report_names_without_values() -> None:

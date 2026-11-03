@@ -15,6 +15,9 @@ Entry format: `- <type>: <subject> (#<pull request>)`, grouped under **Added** f
 ### Fixed
 
 - fix: make the Langfuse redaction test independent of random event ids
+- fix: bind client idempotency keys to the merchant, action, and order (#32)
+- fix: rate-limit public callers per client address (#33)
+- fix: refuse plaintext http provider base URLs outside localhost (#34)
 
 ## 0.1.0
 

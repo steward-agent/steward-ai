@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 import httpx
 
 from ecommerce_agent.errors import PluginConfigError, ToolError
 from ecommerce_agent.secrets import SecretSource, require_secret
+
+
+LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
 class CallContext:
@@ -21,6 +26,8 @@ class JsonClient:
     def __init__(self, base_url: str, secret_env: str, client: httpx.Client | None = None) -> None:
         if not base_url or not base_url.startswith(("https://", "http://")):
             raise PluginConfigError("base_url must be an absolute http(s) URL on your payment or commerce system")
+        if base_url.startswith("http://") and urlsplit(base_url).hostname not in LOOPBACK_HOSTS:
+            raise PluginConfigError("base_url must use https. Plain http is allowed only for localhost.")
         self.base_url = base_url.rstrip("/")
         self.secret_env = secret_env
         self.client = client or httpx.Client(timeout=20)

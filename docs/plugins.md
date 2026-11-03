@@ -18,6 +18,8 @@ export COMMERCE_API_KEY=the-key-your-store-uses
 
 The `*_SECRET_ENV` values are names of variables. The keys themselves stay in the host environment.
 
+Base URLs must use `https://`, because the plugin sends the provider key as a Bearer header. Plain `http://` is accepted only for `localhost`, `127.0.0.1`, and `::1`.
+
 | Your stack | `PAYMENT_PLUGIN` | `COMMERCE_PLUGIN` |
 | --- | --- | --- |
 | Your own provider behind a small adapter | `http` | `http` |
@@ -67,7 +69,7 @@ A refund above `SUPPORT_ALERT_ABOVE` (default `50.00` in the order currency) is 
 
 ## Refund responses
 
-`POST /v1/refunds` and `POST /v1/messages` accept the key as an `Idempotency-Key` header, as the `idempotency_key` body field, or both when they match. A header and body that differ return `422`. The agent passes the key to the commerce and payment plugins, which forward it to the provider. Without a key, the agent derives one from the store, the order, and the amount.
+`POST /v1/refunds` and `POST /v1/messages` accept the key as an `Idempotency-Key` header, as the `idempotency_key` body field, or both when they match. A header and body that differ return `422`. The agent binds a client key to the merchant, the action, and the order, hashes it, and sends that scoped key (for example `refund:3f9c…`) to the commerce and payment plugins, which forward it to the provider. The response returns the scoped key. Retrying with the same client key on the same order still returns the first result, and the same client key on a different order cannot. Without a key, the agent derives one from the store, the order, and the amount.
 
 When a guardrail decides the outcome, the response carries a `decision` code next to the human-readable `message`:
 

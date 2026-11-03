@@ -206,6 +206,49 @@ def test_repeating_the_idempotency_key_does_not_refund_twice() -> None:
     assert len(payment.refunds) == 1
 
 
+def test_a_client_key_cannot_replay_another_orders_refund() -> None:
+    agent, payment, commerce = _agent(order=_order(5, "40.00"), approval=ThresholdApproval(Decimal("100")))
+    commerce.orders["2002"] = _order(5, "10.00", order_id="2002", customer="cust_2").model_copy(update={"payment_id": "pay_2002"})
+    payment.payments["pay_2002"] = {
+        "order_id": "2002",
+        "amount": Decimal("10.00"),
+        "refunded": Decimal("0"),
+        "currency": "USD",
+        "captured": True,
+    }
+    caller = Caller(scope=Scope.PUBLIC)
+    # The other shopper sends the key the agent would derive for order 1001, then the same key outright.
+    agent.handle(_refund(order_id="2002", customer_ref="cust_2", idempotency_key="merchant-refund-1001-full"), caller)
+    derived = agent.handle(_refund(idempotency_key=None), caller)
+    assert derived.outcome is Outcome.COMPLETED
+    assert payment.payments["pay_1001"]["refunded"] == Decimal("40.00")
+
+    agent.handle(_refund(order_id="2002", customer_ref="cust_2", idempotency_key="shared-key-123"), caller)
+    first = agent.handle(_refund(idempotency_key="shared-key-123"), caller)
+    assert first.idempotency_key != "shared-key-123"
+    assert len(payment.refunds) == 2
+
+
+def test_capture_keys_keep_the_payment_id_when_the_base_is_long() -> None:
+    from ecommerce_agent.plugins.payments import _scoped_key
+
+    base = "k" * 80
+    first, second = _scoped_key(base, "pay_a"), _scoped_key(base, "pay_b")
+    assert first != second
+    assert len(first) <= 80
+    assert _scoped_key("settle-key", "pay_a") == "settle-key-pay_a"
+
+
+def test_provider_base_url_must_be_https_except_on_localhost() -> None:
+    with pytest.raises(PluginConfigError):
+        HttpPaymentPlugin("http://payments.example.com", "PAYMENT_API_KEY")
+    with pytest.raises(PluginConfigError):
+        StripePaymentPlugin("STRIPE_SECRET_KEY", base_url="http://api.stripe.com")
+    HttpPaymentPlugin("http://localhost:9000", "PAYMENT_API_KEY")
+    HttpCommercePlugin("http://127.0.0.1:9000", "COMMERCE_API_KEY")
+    HttpPaymentPlugin("https://payments.example.com", "PAYMENT_API_KEY")
+
+
 def test_public_request_without_a_signed_order_does_not_touch_payment() -> None:
     agent, payment, commerce = _agent()
     result = agent.handle(_refund(order_access=False), Caller(scope=Scope.PUBLIC))
@@ -388,10 +431,10 @@ def test_byo_contract_refunds_and_quotes_through_the_merchant_adapter() -> None:
             response = self.client.request(request.method, request.url.path, content=request.content, headers=headers)
             return httpx.Response(response.status_code, content=response.content)
 
-    client = httpx.Client(transport=AppTransport(), base_url="http://testserver")
+    client = httpx.Client(transport=AppTransport(), base_url="https://testserver")
     secrets = MapSecrets({"PAYMENT_API_KEY": "provider-secret", "COMMERCE_API_KEY": "provider-secret"})
-    payment = HttpPaymentPlugin("http://testserver", "PAYMENT_API_KEY", client)
-    commerce = HttpCommercePlugin("http://testserver", "COMMERCE_API_KEY", client)
+    payment = HttpPaymentPlugin("https://testserver", "PAYMENT_API_KEY", client)
+    commerce = HttpCommercePlugin("https://testserver", "COMMERCE_API_KEY", client)
     agent = AgentApp(
         settings=Settings(auto_approve_below=Decimal("100")),
         secrets=secrets,

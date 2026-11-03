@@ -6,7 +6,7 @@ import json
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -162,18 +162,19 @@ def create_api(agent: AgentApp, gateway: Gateway) -> FastAPI:
         return HTMLResponse(page)
 
     @app.get("/v1/slis")
-    def slis(authorization: str | None = Header(default=None)) -> dict:
-        caller = _admit(gateway, authorization)
+    def slis(request: Request, authorization: str | None = Header(default=None)) -> dict:
+        caller = _admit(gateway, authorization, request)
         gateway.require_server(caller)
         return agent.observability.snapshot()
 
     @app.post("/v1/messages")
     def messages(
         body: MessageIn,
+        request: Request,
         authorization: str | None = Header(default=None),
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ):
-        caller = _admit(gateway, authorization)
+        caller = _admit(gateway, authorization, request)
         body = _with_idempotency_header(body, idempotency_key)
         access = _order_access(agent, gateway, caller.scope, body)
         result = agent.handle(_user_request(body, access, intent=None), caller)
@@ -182,10 +183,11 @@ def create_api(agent: AgentApp, gateway: Gateway) -> FastAPI:
     @app.post("/v1/refunds")
     def refunds(
         body: RefundIn,
+        request: Request,
         authorization: str | None = Header(default=None),
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ):
-        caller = _admit(gateway, authorization)
+        caller = _admit(gateway, authorization, request)
         body = _with_idempotency_header(body, idempotency_key)
         access = _order_access(agent, gateway, caller.scope, body)
         try:
@@ -199,8 +201,8 @@ def create_api(agent: AgentApp, gateway: Gateway) -> FastAPI:
         return _public_body(result, caller.scope)
 
     @app.post("/v1/settlements")
-    def settlements(body: SettlementIn, authorization: str | None = Header(default=None)):
-        caller = _admit(gateway, authorization)
+    def settlements(body: SettlementIn, request: Request, authorization: str | None = Header(default=None)):
+        caller = _admit(gateway, authorization, request)
         gateway.require_server(caller)
         result = agent.handle(
             UserRequest(
@@ -215,8 +217,8 @@ def create_api(agent: AgentApp, gateway: Gateway) -> FastAPI:
         return result.model_dump(mode="json")
 
     @app.post("/v1/conversions/quote")
-    def quote(body: ConversionIn, authorization: str | None = Header(default=None)):
-        caller = _admit(gateway, authorization)
+    def quote(body: ConversionIn, request: Request, authorization: str | None = Header(default=None)):
+        caller = _admit(gateway, authorization, request)
         if body.execute:
             gateway.require_server(caller)
         try:
@@ -243,8 +245,8 @@ def create_api(agent: AgentApp, gateway: Gateway) -> FastAPI:
         return _public_body(result, caller.scope)
 
     @app.get("/v1/keys")
-    def keys(authorization: str | None = Header(default=None)) -> dict:
-        caller = _admit(gateway, authorization)
+    def keys(request: Request, authorization: str | None = Header(default=None)) -> dict:
+        caller = _admit(gateway, authorization, request)
         gateway.require_server(caller)
         listed = []
         for provider, env_name, purpose in provider_key_names(agent.settings):
@@ -264,8 +266,8 @@ def create_api(agent: AgentApp, gateway: Gateway) -> FastAPI:
         }
 
     @app.get("/v1/policies")
-    def policies(authorization: str | None = Header(default=None)) -> dict:
-        caller = _admit(gateway, authorization)
+    def policies(request: Request, authorization: str | None = Header(default=None)) -> dict:
+        caller = _admit(gateway, authorization, request)
         gateway.require_server(caller)
         agent.refresh_policies()
         return {
@@ -274,8 +276,8 @@ def create_api(agent: AgentApp, gateway: Gateway) -> FastAPI:
         }
 
     @app.post("/v1/policies")
-    def upload_policy(body: PolicyIn, authorization: str | None = Header(default=None)) -> dict:
-        caller = _admit(gateway, authorization)
+    def upload_policy(body: PolicyIn, request: Request, authorization: str | None = Header(default=None)) -> dict:
+        caller = _admit(gateway, authorization, request)
         gateway.require_server(caller)
         try:
             saved = agent.save_org_policy(body.name, body.text)
@@ -319,9 +321,9 @@ def create_api(agent: AgentApp, gateway: Gateway) -> FastAPI:
     return app
 
 
-def _admit(gateway: Gateway, authorization: str | None):
+def _admit(gateway: Gateway, authorization: str | None, request: Request):
     caller = gateway.authenticate(authorization)
-    gateway.enforce_rate_limit(caller)
+    gateway.enforce_rate_limit(caller, request.client.host if request.client else None)
     return caller
 
 
