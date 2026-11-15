@@ -9,7 +9,6 @@ import httpx
 from ecommerce_agent.errors import PluginConfigError, ToolError
 from ecommerce_agent.secrets import SecretSource, require_secret
 
-
 LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 

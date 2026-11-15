@@ -8,6 +8,9 @@ Entry format: `- <type>: <subject> (#<pull request>)`, grouped under **Added** f
 
 ### Added
 
+- feat: public data-protection, GDPR, PII, and payment-policy pages in code and on `/v1/privacy`
+- feat: block refund and payment tools when a message contains a card number or CVV
+- feat: CI lint (ruff) plus free security scans (bandit, pip-audit, gitleaks)
 - feat: accept the `Idempotency-Key` header on refund and message requests
 - feat: return a `decision` code with every guardrail refusal
 - feat: refund only the refundable lines of an order that also holds non-refundable items

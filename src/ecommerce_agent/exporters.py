@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -15,7 +15,7 @@ from ecommerce_agent.settings import Settings
 
 
 def langfuse_batch(draft: SignalDraft, result: AgentResult, *, include_order_id: bool, order_id: str | None) -> dict:
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     metadata = {
         "intent": result.intent.value,
         "outcome": result.outcome.value,

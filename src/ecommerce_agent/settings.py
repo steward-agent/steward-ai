@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from decimal import Decimal
-from typing import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 

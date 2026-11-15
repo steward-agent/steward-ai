@@ -8,7 +8,7 @@ and must not be used in production.
 from __future__ import annotations
 
 import hmac
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -29,7 +29,7 @@ def create_byo_app(expected_token: str, *, seed: bool = True) -> FastAPI:
     app.state.refunds = {}
     app.state.idempotency = {}
     if seed:
-        created = datetime.now(timezone.utc) - timedelta(days=5)
+        created = datetime.now(UTC) - timedelta(days=5)
         app.state.orders["1001"] = {
             "id": "1001",
             "customer_ref": "cust_1",
@@ -64,7 +64,11 @@ def create_byo_app(expected_token: str, *, seed: bool = True) -> FastAPI:
             raise HTTPException(status_code=401, detail="unauthorized")
 
     @app.post("/v1/refunds")
-    def refund(body: dict, authorization: str | None = Header(default=None), idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
+    def refund(
+        body: dict,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ):
         authorized(authorization)
         key = idempotency_key or body.get("idempotency_key")
         if key and key in app.state.idempotency:
@@ -79,7 +83,12 @@ def create_byo_app(expected_token: str, *, seed: bool = True) -> FastAPI:
         order = app.state.orders.get(body.get("order_id"))
         if order is not None:
             order["refundable"] = format(Decimal(order["refundable"]) - amount, "f")
-        result = {"id": f"re_{uuid4().hex[:8]}", "status": "succeeded", "amount": format(amount, "f"), "currency": body["currency"]}
+        result = {
+            "id": f"re_{uuid4().hex[:8]}",
+            "status": "succeeded",
+            "amount": format(amount, "f"),
+            "currency": body["currency"],
+        }
         app.state.refunds[result["id"]] = result
         if key:
             app.state.idempotency[key] = result
@@ -107,7 +116,11 @@ def create_byo_app(expected_token: str, *, seed: bool = True) -> FastAPI:
         }
 
     @app.post("/v1/payments")
-    def create_payment(body: dict, authorization: str | None = Header(default=None), idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
+    def create_payment(
+        body: dict,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ):
         authorized(authorization)
         key = idempotency_key or body.get("idempotency_key")
         if key and key in app.state.idempotency:

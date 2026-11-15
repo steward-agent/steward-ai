@@ -8,8 +8,8 @@ from ecommerce_agent.errors import PluginConfigError
 from ecommerce_agent.plugins.approval import ThresholdApproval, WebhookApproval
 from ecommerce_agent.plugins.commerce import HttpCommercePlugin, MockCommercePlugin
 from ecommerce_agent.plugins.flutterwave import FlutterwavePaymentPlugin
-from ecommerce_agent.plugins.paystack import PaystackPaymentPlugin
 from ecommerce_agent.plugins.payments import HttpPaymentPlugin, MockPaymentPlugin, StripePaymentPlugin
+from ecommerce_agent.plugins.paystack import PaystackPaymentPlugin
 from ecommerce_agent.plugins.shopify import ShopifyCommercePlugin, ShopifyPaymentPlugin
 from ecommerce_agent.settings import Settings
 

@@ -6,10 +6,10 @@ import hashlib
 import threading
 import time
 import uuid
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Callable
 
 import httpx
 
@@ -39,6 +39,7 @@ from ecommerce_agent.plugins.http_client import CallContext
 from ecommerce_agent.plugins.payments import MockPaymentPlugin
 from ecommerce_agent.plugins.registry import create_approval, create_commerce, create_payment
 from ecommerce_agent.plugins.support_alert import SupportAlert
+from ecommerce_agent.privacy import contains_payment_instrument, refuse_payment_instrument_message
 from ecommerce_agent.redaction import redact
 from ecommerce_agent.retrieval import (
     KeywordRetriever,
@@ -80,7 +81,7 @@ class AgentApp:
         self.observability = observability or Observability()
         self.model = model
         self.router = Router(model)
-        self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.clock = clock or (lambda: datetime.now(UTC))
         self.exporter = exporter
         self.support_alert = support_alert or SupportAlert(None)
         self.rules = parse_policy_rules(retriever.documents)
@@ -98,6 +99,9 @@ class AgentApp:
         draft.nodes.append("gateway")
         self.refresh_policies()
         try:
+            payment_instrument = contains_payment_instrument(request.message) or contains_payment_instrument(
+                request.reason
+            )
             redacted = redact(request.message)
             reason = redact(request.reason)
             try:
@@ -112,15 +116,25 @@ class AgentApp:
                 )
                 self._finish(draft, result)
                 return result.model_copy(update={"trace": self._trace(draft, result)})
-            saw_sensitive = any(
-                token in redacted or token in reason
-                for token in ("REDACTED_CARD", "REDACTED_SECRET", "REDACTED_CVV")
+            saw_sensitive = payment_instrument or any(
+                token in redacted or token in reason for token in ("REDACTED_CARD", "REDACTED_SECRET", "REDACTED_CVV")
             )
             route = self.router.route(redacted, explicit=request.intent)
             draft.nodes.append("router")
             if route.fallback:
                 draft.fallback_attempted = True
-            if route.intent == Intent.REFUND:
+            # Payment instruments never enter refund or conversion tools (data protection / PCI).
+            if payment_instrument and route.intent in {Intent.REFUND, Intent.CONVERSION, Intent.SETTLEMENT}:
+                draft.nodes.append("pii_guard")
+                draft.decision = "payment_instrument_blocked"
+                result = self._result(
+                    draft,
+                    route.intent,
+                    Outcome.DENIED,
+                    refuse_payment_instrument_message(),
+                    None,
+                )
+            elif route.intent == Intent.REFUND:
                 result = self._refund(request, caller, redacted, reason, draft)
             elif route.intent == Intent.SETTLEMENT:
                 result = self._settlement(request, caller, draft)
@@ -130,7 +144,7 @@ class AgentApp:
                 result = self._support(request, caller, redacted, draft)
             if route.fallback and result.outcome != Outcome.FAILED:
                 draft.fallback_recovered = True
-            if saw_sensitive:
+            if saw_sensitive and draft.decision != "payment_instrument_blocked":
                 result = result.model_copy(update={"message": result.message + CARD_WARNING})
             first_text = time.perf_counter()
             draft.ttft_ms = (first_text - started) * 1000
@@ -221,13 +235,27 @@ class AgentApp:
     ) -> AgentResult:
         draft.nodes.append("return_planner")
         if not request.order_id:
-            return self._result(draft, Intent.REFUND, Outcome.NEEDS_DETAILS, "Send the return from the signed-in order page so the store can confirm the order. No refund was sent.", None)
+            return self._result(
+                draft,
+                Intent.REFUND,
+                Outcome.NEEDS_DETAILS,
+                "Send the return from the signed-in order page so the store can confirm the order. No refund was sent.",
+                None,
+            )
         if caller.scope != Scope.SERVER and not request.order_access:
-            return self._result(draft, Intent.REFUND, Outcome.NEEDS_DETAILS, "Start this return from the signed-in order page so the store can confirm the order. No refund was sent.", None)
+            return self._result(
+                draft,
+                Intent.REFUND,
+                Outcome.NEEDS_DETAILS,
+                "Start this return from the signed-in order page so the store can confirm the order. No refund was sent.",
+                None,
+            )
         try:
             check_id(request.order_id, "order_id")
         except Exception:
-            return self._result(draft, Intent.REFUND, Outcome.DENIED, "That order id cannot be used. No refund was sent.", None)
+            return self._result(
+                draft, Intent.REFUND, Outcome.DENIED, "That order id cannot be used. No refund was sent.", None
+            )
         # Without a client key, include request_id so two equal partial refunds are not treated as one retry.
         key = self._key(
             request,
@@ -239,10 +267,18 @@ class AgentApp:
         try:
             order = self._call_tool(draft, self.commerce, lambda: self.commerce.get_order(ctx, request.order_id))
         except ToolError:
-            return self._result(draft, Intent.REFUND, Outcome.FAILED, "That order was not found in the store. No refund was sent.", key)
+            return self._result(
+                draft, Intent.REFUND, Outcome.FAILED, "That order was not found in the store. No refund was sent.", key
+            )
         if not _customer_ok(order, request, caller):
             draft.decision = "customer_mismatch"
-            return self._result(draft, Intent.REFUND, Outcome.DENIED, "That order does not match the signed-in customer. No refund was sent.", key)
+            return self._result(
+                draft,
+                Intent.REFUND,
+                Outcome.DENIED,
+                "That order does not match the signed-in customer. No refund was sent.",
+                key,
+            )
         draft.nodes.append("retriever")
         hit = self.retriever.search(redacted or reason or "return refund")
         draft.retrieval_score = hit.score if hit else None
@@ -267,13 +303,37 @@ class AgentApp:
         draft.nodes.append("guardrails")
         draft.decision = decision
         if decision == "invalid_amount":
-            return self._result(draft, Intent.REFUND, Outcome.DENIED, "The refund amount is not available on that order. No refund was sent.", key)
+            return self._result(
+                draft,
+                Intent.REFUND,
+                Outcome.DENIED,
+                "The refund amount is not available on that order. No refund was sent.",
+                key,
+            )
         if decision == "currency_mismatch":
-            return self._result(draft, Intent.REFUND, Outcome.DENIED, "The refund currency does not match the order. No refund was sent.", key)
+            return self._result(
+                draft,
+                Intent.REFUND,
+                Outcome.DENIED,
+                "The refund currency does not match the order. No refund was sent.",
+                key,
+            )
         if decision == "currency_not_accepted":
-            return self._result(draft, Intent.REFUND, Outcome.DENIED, f"The store payment policy does not accept {currency}. No refund was sent.", key)
+            return self._result(
+                draft,
+                Intent.REFUND,
+                Outcome.DENIED,
+                f"The store payment policy does not accept {currency}. No refund was sent.",
+                key,
+            )
         if decision == "window":
-            return self._result(draft, Intent.REFUND, Outcome.DENIED, f"Order {order.id} is outside the {window}-day return window, so no refund was sent.", key)
+            return self._result(
+                draft,
+                Intent.REFUND,
+                Outcome.DENIED,
+                f"Order {order.id} is outside the {window}-day return window, so no refund was sent.",
+                key,
+            )
         if decision == "non_refundable":
             blocked = blocked_item_name(order.items, self.rules.non_refundable) or "an item"
             message = f"Order {order.id} includes {blocked}, which the refund policy lists as non-refundable. No refund was sent."
@@ -339,7 +399,13 @@ class AgentApp:
         if approval.status == "approved":
             return self._execute_refund(ctx, draft, order, amount, currency, reason, key, items)
         if approval.status == "denied":
-            return self._result(draft, Intent.REFUND, Outcome.DENIED, f"The return for {items} on order {order.id} was denied. No refund was sent to the payment provider.", key)
+            return self._result(
+                draft,
+                Intent.REFUND,
+                Outcome.DENIED,
+                f"The return for {items} on order {order.id} was denied. No refund was sent to the payment provider.",
+                key,
+            )
         return self._result(
             draft,
             Intent.REFUND,
@@ -348,7 +414,9 @@ class AgentApp:
             key,
         )
 
-    def _execute_refund(self, ctx, draft, order: Order, amount: Decimal, currency: str, reason: str, key: str, items: str) -> AgentResult:
+    def _execute_refund(
+        self, ctx, draft, order: Order, amount: Decimal, currency: str, reason: str, key: str, items: str
+    ) -> AgentResult:
         draft.nodes.append("commerce_tool")
         try:
             recorded = self._call_tool(
@@ -360,7 +428,14 @@ class AgentApp:
                 ),
             )
         except ToolError:
-            return self._result(draft, Intent.REFUND, Outcome.FAILED, "The store could not record the return. No refund was sent to the payment provider.", key, [ActionRecord(tool="commerce.record_return", ok=False, status="failed")])
+            return self._result(
+                draft,
+                Intent.REFUND,
+                Outcome.FAILED,
+                "The store could not record the return. No refund was sent to the payment provider.",
+                key,
+                [ActionRecord(tool="commerce.record_return", ok=False, status="failed")],
+            )
         draft.nodes.append("payment_tool")
         try:
             refund = self._call_tool(
@@ -394,7 +469,14 @@ class AgentApp:
             key,
             [
                 ActionRecord(tool="commerce.record_return", ok=True, status=recorded.status, reference=recorded.id),
-                ActionRecord(tool="payment.refund", ok=True, status=refund.status, reference=refund.id, amount=format(amount, "f"), currency=currency),
+                ActionRecord(
+                    tool="payment.refund",
+                    ok=True,
+                    status=refund.status,
+                    reference=refund.id,
+                    amount=format(amount, "f"),
+                    currency=currency,
+                ),
             ],
         )
 
@@ -443,7 +525,13 @@ class AgentApp:
     def _settlement(self, request: UserRequest, caller: Caller, draft: SignalDraft) -> AgentResult:
         draft.nodes.append("settlement")
         if caller.scope != Scope.SERVER:
-            return self._result(draft, Intent.SETTLEMENT, Outcome.DENIED, "Settlement runs from the store backend with the server token. No payment was captured.", None)
+            return self._result(
+                draft,
+                Intent.SETTLEMENT,
+                Outcome.DENIED,
+                "Settlement runs from the store backend with the server token. No payment was captured.",
+                None,
+            )
         capture = request.settlement_mode == "capture"
         key = self._key(request, "settle", [request.settlement_mode])
         ctx = self._context(draft.request_id, key)
@@ -477,7 +565,13 @@ class AgentApp:
     def _conversion(self, request: UserRequest, caller: Caller, draft: SignalDraft) -> AgentResult:
         draft.nodes.append("conversion")
         if not request.amount or not request.from_currency or not request.to_currency:
-            return self._result(draft, Intent.CONVERSION, Outcome.NEEDS_DETAILS, "Send the amount, the currency you have, and the currency you want quoted. No payment was created.", None)
+            return self._result(
+                draft,
+                Intent.CONVERSION,
+                Outcome.NEEDS_DETAILS,
+                "Send the amount, the currency you have, and the currency you want quoted. No payment was created.",
+                None,
+            )
         source = check_currency(request.from_currency)
         target = check_currency(request.to_currency)
         if self.rules.currency_conversion is False:
@@ -544,7 +638,16 @@ class AgentApp:
                 ),
             )
             message += f" Payment {created.id} was created at {created.provider}. Confirm it in your checkout. Card details stay with the provider."
-            actions.append(ActionRecord(tool="payment.create_payment", ok=True, status=created.status, reference=created.id, amount=format(quote.converted_amount, "f"), currency=quote.to_currency))
+            actions.append(
+                ActionRecord(
+                    tool="payment.create_payment",
+                    ok=True,
+                    status=created.status,
+                    reference=created.id,
+                    amount=format(quote.converted_amount, "f"),
+                    currency=quote.to_currency,
+                )
+            )
         return self._result(draft, Intent.CONVERSION, Outcome.COMPLETED, message, key, actions)
 
     def use_policies(self, documents: list[PolicyDocument]) -> None:
@@ -711,13 +814,12 @@ def _item_label(order: Order, rules) -> str:
 def _qa_system(excerpt: str) -> str:
     return (
         "Answer only from the store policy excerpt. Do not invent a refund, a balance, or a payment result. "
-        "Do not ask for card numbers. Policy excerpt: "
-        + excerpt
+        "Do not ask for card numbers. Policy excerpt: " + excerpt
     )
 
 
 def seed_demo(payment: MockPaymentPlugin, commerce: MockCommercePlugin, now: datetime | None = None) -> None:
-    current = now or datetime.now(timezone.utc)
+    current = now or datetime.now(UTC)
     from datetime import timedelta
 
     order = Order(
@@ -775,7 +877,11 @@ def build_agent(
         if not loaded and settings.demo:
             loaded = bundled_policies()
         policies = loaded
-    if settings.demo and isinstance(payment_plugin, MockPaymentPlugin) and isinstance(commerce_plugin, MockCommercePlugin):
+    if (
+        settings.demo
+        and isinstance(payment_plugin, MockPaymentPlugin)
+        and isinstance(commerce_plugin, MockCommercePlugin)
+    ):
         seed_demo(payment_plugin, commerce_plugin, clock() if clock else None)
         logger.warning("Demo mode is on. It seeds a sample order and must stay off in production.")
     if exporter is None and settings.langfuse_host:

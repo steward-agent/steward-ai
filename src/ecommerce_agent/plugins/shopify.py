@@ -11,7 +11,6 @@ import httpx
 from ecommerce_agent.errors import PluginConfigError, ToolError
 from ecommerce_agent.gateway import check_id
 from ecommerce_agent.models import (
-    CaptureResult,
     ConversionQuote,
     ConversionRequest,
     CreatePaymentRequest,
@@ -123,7 +122,9 @@ class ShopifyCommercePlugin:
 
     def record_return(self, ctx: CallContext, request: ReturnRequest) -> ReturnResult:
         check_id(request.order_id, "order_id")
-        note = f"Return recorded by ecommerce-agent for {format(request.amount, 'f')} {request.currency}. {request.reason}"
+        note = (
+            f"Return recorded by ecommerce-agent for {format(request.amount, 'f')} {request.currency}. {request.reason}"
+        )
         self.client.call(
             ctx,
             "PUT",
@@ -154,7 +155,9 @@ class ShopifyPaymentPlugin:
 
     def refund(self, ctx: CallContext, request: RefundRequest) -> RefundResult:
         check_id(request.order_id, "order_id")
-        transactions = self.client.call(ctx, "GET", f"/orders/{request.order_id}/transactions.json").get("transactions", [])
+        transactions = self.client.call(ctx, "GET", f"/orders/{request.order_id}/transactions.json").get(
+            "transactions", []
+        )
         parent = _matching_transaction(transactions, request.payment_id)
         payload = {
             "refund": {
@@ -188,7 +191,9 @@ class ShopifyPaymentPlugin:
 
     def create_payment(self, ctx: CallContext, request: CreatePaymentRequest) -> PaymentCreated:
         del ctx, request
-        raise ToolError("Create Shopify checkout in your store. This adapter refunds and captures existing orders.", status_code=400)
+        raise ToolError(
+            "Create Shopify checkout in your store. This adapter refunds and captures existing orders.", status_code=400
+        )
 
     def settlement(self, ctx: CallContext, *, capture: bool, now: datetime) -> SettlementReport:
         del ctx, capture, now

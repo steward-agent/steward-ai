@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from typing import Mapping, Protocol
+from collections.abc import Mapping
+from typing import Protocol
 
 from ecommerce_agent.errors import PluginConfigError
 
@@ -43,7 +44,5 @@ class MapSecrets:
 def require_secret(secrets: SecretSource, name: str) -> str:
     value = secrets.get(name)
     if value is None:
-        raise PluginConfigError(
-            f"Missing environment variable {name}. Set it on your server and do not commit it."
-        )
+        raise PluginConfigError(f"Missing environment variable {name}. Set it on your server and do not commit it.")
     return value

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-
 from decimal import Decimal
 
 from ecommerce_agent.models import Intent, UserRequest

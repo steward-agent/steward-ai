@@ -15,7 +15,9 @@ The same bar on every page:
 
 Overview is the landing page. GitHub opens the open-source repository.
 
-The footer on every page links to the legal pages: Privacy, Data privacy, Terms, and Cookies.
+The footer on every page links to the legal pages: Privacy, Data privacy, Data protection, GDPR, PII, Payment policy, Terms, and Cookies. Anyone can open these pages; they are not private to maintainers.
+
+A running agent also serves the same topics without a token at `/data-protection`, `/gdpr`, `/pii`, `/payment-policy`, and `/v1/privacy`.
 
 ## Who it is for
 
