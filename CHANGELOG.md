@@ -8,7 +8,9 @@ Entry format: `- <type>: <subject> (#<pull request>)`, grouped under **Added** f
 
 ### Added
 
+- feat: redact phone numbers and IBAN-like values in free text
 - feat: block model/prompt injection from authorizing refunds or other money paths
+- chore: use free gitleaks CLI in CI (no paid Action license)
 - feat: public data-protection, GDPR, PII, and payment-policy pages in code and on `/v1/privacy`
 - feat: block refund and payment tools when a message contains a card number or CVV
 - feat: CI lint (ruff) plus free security scans (bandit, pip-audit, gitleaks)

@@ -113,14 +113,44 @@ def _refund(message: str = "I want to return my headphones", **updates) -> UserR
 
 
 def test_redaction_removes_card_secret_and_email() -> None:
-    cleaned = redact(f"email me a@b.com card {PAN} key sk_test_abc123 Bearer sk_live_zzzz")
+    cleaned = redact(
+        f"email me a@b.com card {PAN} cvv 123 key sk_test_abc123 Bearer sk_live_zzzz "
+        f"call +1 415-555-2671 iban GB82WEST12345698765432 shpat_abc123FLW"
+    )
     assert PAN not in cleaned
     assert "sk_test_abc123" not in cleaned
     assert "sk_live_zzzz" not in cleaned
     assert "a@b.com" not in cleaned
+    assert "415-555-2671" not in cleaned
+    assert "GB82WEST12345698765432" not in cleaned
     assert "[REDACTED_CARD]" in cleaned
     assert "[REDACTED_SECRET]" in cleaned
     assert "[REDACTED_EMAIL]" in cleaned
+    assert "[REDACTED_CVV]" in cleaned
+    assert "[REDACTED_PHONE]" in cleaned
+    assert "[REDACTED_IBAN]" in cleaned
+
+
+def test_model_adapter_exposes_no_payment_or_commerce_tools() -> None:
+    """#20: LLMs only get classify/complete. Money tools stay on the workflow."""
+
+    class PhraseOnly:
+        def classify(self, text: str) -> str:
+            return "customer_service"
+
+        def complete(self, system: str, user: str) -> str:
+            return "Policy answer"
+
+    model = PhraseOnly()
+    for banned in ("refund", "capture", "get_order", "record_return", "create_payment", "settle"):
+        assert not hasattr(model, banned)
+    agent, payment, commerce = _agent(model=model, approval=ThresholdApproval(Decimal("100")))
+    assert agent.model is model
+    assert not hasattr(agent.model, "refund")
+    result = agent.handle(UserRequest(message="What is your return policy?"), Caller(scope=Scope.PUBLIC))
+    assert result.intent is Intent.CUSTOMER_SERVICE
+    assert payment.calls == []
+    assert commerce.calls == []
 
 
 def test_settings_do_not_copy_provider_secrets() -> None:

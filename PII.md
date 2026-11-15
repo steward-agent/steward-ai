@@ -7,9 +7,9 @@ How Ecommerce Agent treats personal data in requests, logs, and outbound calls. 
 | Category | Examples | Treatment |
 | --- | --- | --- |
 | Identifiers | `customer_ref`, `order_id` | Accepted as stable ids. Email addresses are not valid as `customer_ref` |
-| Contact in free text | Emails pasted in a message | Redacted to `[REDACTED_EMAIL]` before models, tools, logs, and webhooks |
-| Payment | Card PAN, CVV | Redacted. Never stored by this plugin |
-| Secrets | Stripe/Paystack/Shopify keys, Bearer tokens | Redacted. Live values stay in env vars |
+| Contact in free text | Emails, phone numbers | `[REDACTED_EMAIL]`, `[REDACTED_PHONE]` before models, tools, logs, and webhooks |
+| Payment | Card PAN, CVV, IBAN-like values | Redacted. Never stored by this plugin |
+| Secrets | Stripe/Paystack/Flutterwave/Shopify keys, Bearer tokens | Redacted. Live values stay in env vars |
 | Message body | Support text | Held in memory for the request; redacted before export |
 
 ## Redaction

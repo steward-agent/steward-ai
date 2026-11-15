@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ecommerce_agent.redaction import CARD_CANDIDATE, CVV, EMAIL, SECRET, luhn_ok, redact
+from ecommerce_agent.redaction import CARD_CANDIDATE, CVV, EMAIL, IBAN, PHONE, SECRET, luhn_ok, redact
 
 PRIVACY_VERSION = "2026-11-15"
 
@@ -106,8 +106,9 @@ PII = PolicyPage(
         ),
         (
             "Redacted in free text",
-            "Emails become [REDACTED_EMAIL]. Card numbers become [REDACTED_CARD]. "
-            "CVV values become [REDACTED_CVV]. Provider keys and Bearer tokens become [REDACTED_SECRET].",
+            "Emails become [REDACTED_EMAIL]. Phones become [REDACTED_PHONE]. "
+            "Card numbers become [REDACTED_CARD]. CVV values become [REDACTED_CVV]. "
+            "IBAN-like values become [REDACTED_IBAN]. Provider keys and Bearer tokens become [REDACTED_SECRET].",
         ),
         (
             "Logs and exports",
@@ -251,6 +252,8 @@ def pii_findings(text: str) -> dict[str, bool]:
         "cvv": bool(CVV.search(text)),
         "email": bool(EMAIL.search(text)),
         "secret_token": bool(SECRET.search(text)),
+        "phone": bool(PHONE.search(text)),
+        "iban": bool(IBAN.search(text)),
     }
 
 

@@ -8,7 +8,7 @@ Ecommerce Agent is a library and a small HTTP API that a merchant runs beside th
 2. The merchant's commerce system is the source of orders and return records.
 3. Provider secrets are read from the merchant environment at call time. Stripe, Paystack, Flutterwave, Shopify, and any other provider each have their own variable name.
 4. Card numbers are redacted and are not forwarded.
-5. The language model cannot call payment or commerce tools.
+5. The language model cannot call payment or commerce tools. Model classification alone cannot open a refund, settlement, or conversion; the keyword router must agree, or the merchant API must pass an explicit intent.
 6. Public widget credentials cannot capture funds or create a payment. A refund from the widget runs only after the merchant's approval step allows that request.
 7. Order and payment ids are validated before they are placed in a URL.
 8. The process does not keep a shopper database. Metrics are an in-memory ring of timings and counts.
