@@ -86,11 +86,13 @@
       add(message, "shopper");
       input.value = "";
       try {
+        const idempotencyKey = key();
         const response = await fetch((config.endpoint || "") + "/v1/messages", {
           method: "POST",
           headers: {
             Authorization: "Bearer " + config.publicToken,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey
           },
           body: JSON.stringify({
             message: message,
@@ -99,7 +101,7 @@
             order_id: config.orderId || null,
             customer_signature: config.customerSignature || null,
             customer_expires: config.customerExpires || null,
-            idempotency_key: key()
+            idempotency_key: idempotencyKey
           })
         });
         const payload = await response.json();

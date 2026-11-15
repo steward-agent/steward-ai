@@ -69,7 +69,7 @@ A refund above `SUPPORT_ALERT_ABOVE` (default `50.00` in the order currency) is 
 
 ## Refund responses
 
-`POST /v1/refunds` and `POST /v1/messages` accept the key as an `Idempotency-Key` header, as the `idempotency_key` body field, or both when they match. A header and body that differ return `422`. The agent binds a client key to the merchant, the action, and the order, hashes it, and sends that scoped key (for example `refund:3f9c…`) to the commerce and payment plugins, which forward it to the provider. The response returns the scoped key. Retrying with the same client key on the same order still returns the first result, and the same client key on a different order cannot. Without a key, the agent derives one from the store, the order, and the amount.
+`POST /v1/refunds` and `POST /v1/messages` accept the key as an `Idempotency-Key` header, as the `idempotency_key` body field, or both when they match. A header and body that differ return `422`. The agent binds a client key to the merchant, the action, and the order, hashes it, and sends that scoped key (for example `refund:3f9c…`) to the commerce and payment plugins, which forward it to the provider. The response returns the scoped key. Retrying with the same client key on the same order still returns the first result, and the same client key on a different order cannot. Without a key, the agent derives a unique key per request (store, order, amount, and request id), so two equal partial refunds both reach the provider.
 
 When a guardrail decides the outcome, the response carries a `decision` code next to the human-readable `message`:
 
@@ -220,6 +220,8 @@ This records a return. It does not move money.
   });
 </script>
 ```
+
+Each message sends a fresh idempotency key in the `idempotency_key` body field and the `Idempotency-Key` header. List your store origin in `CORS_ORIGINS` so the browser can send that header on cross-origin calls.
 
 Create the signature on the server after login:
 

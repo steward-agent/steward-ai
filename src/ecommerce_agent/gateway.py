@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import math
 import re
 import threading
 import time
@@ -104,6 +105,17 @@ class RateLimiter:
                 return True
             return False
 
+    def retry_after_seconds(self) -> int:
+        """Whole seconds until the bucket has a token. At least 1."""
+        with self._lock:
+            now = time.monotonic()
+            elapsed = now - self.updated
+            tokens = min(self.capacity, self.tokens + elapsed * self.refill_per_sec)
+            if tokens >= 1:
+                return 1
+            needed = 1.0 - tokens
+            return max(1, math.ceil(needed / self.refill_per_sec))
+
 
 class ClientRateLimiter:
     """One bucket per client address. The public token is in the page, so one client must not drain the rest."""
@@ -125,6 +137,13 @@ class ClientRateLimiter:
             else:
                 self._buckets.move_to_end(client)
         return bucket.allow()
+
+    def retry_after_seconds(self, client: str) -> int:
+        with self._lock:
+            bucket = self._buckets.get(client)
+            if bucket is None:
+                return 1
+        return bucket.retry_after_seconds()
 
 
 class Gateway:
@@ -156,11 +175,12 @@ class Gateway:
 
     def enforce_rate_limit(self, caller: Caller, client: str | None = None) -> None:
         if caller.scope == Scope.SERVER:
-            allowed = self._server_limiter.allow()
-        else:
-            allowed = self._public_limiter.allow(client or "unknown")
-        if not allowed:
-            raise RateLimited(retry_after=1)
+            if not self._server_limiter.allow():
+                raise RateLimited(retry_after=self._server_limiter.retry_after_seconds())
+            return
+        key = client or "unknown"
+        if not self._public_limiter.allow(key):
+            raise RateLimited(retry_after=self._public_limiter.retry_after_seconds(key))
 
     def require_server(self, caller: Caller) -> None:
         if caller.scope != Scope.SERVER:

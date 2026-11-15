@@ -135,7 +135,7 @@ def create_api(agent: AgentApp, gateway: Gateway) -> FastAPI:
             CORSMiddleware,
             allow_origins=agent.settings.cors_origins,
             allow_methods=["GET", "POST"],
-            allow_headers=["Authorization", "Content-Type"],
+            allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
         )
 
     @app.get("/health")
