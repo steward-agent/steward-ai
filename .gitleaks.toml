@@ -1,0 +1,17 @@
+# Free gitleaks config. Test/demo placeholders are not live secrets.
+title = "ecommerce-agent"
+
+[allowlist]
+description = "Fixtures, samples, and docs use obvious fake provider keys"
+paths = [
+  '''(^|/)tests/''',
+  '''(^|/)examples/''',
+  '''(^|/)\.venv/''',
+]
+regexTarget = "match"
+regexes = [
+  '''sk_test_[A-Za-z0-9]+''',
+  '''pk_test_[A-Za-z0-9]+''',
+  '''shpat_(secret|hidden|abc123[A-Za-z0-9]*)''',
+  '''Bearer sk_(?:live|test)_zzzz''',
+]

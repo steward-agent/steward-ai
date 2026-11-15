@@ -101,10 +101,11 @@ jobs:
 
       - name: Secret scan
         # Free gitleaks CLI. The GitHub Action requires a paid org license; the binary does not.
+        # .gitleaks.toml allowlists test/demo placeholders (not live keys).
         run: |
           VERSION=8.24.3
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
-          ./gitleaks detect --source . --no-banner --redact
+          ./gitleaks detect --source . --no-banner --redact --config .gitleaks.toml
 
   ci:
     name: All checks

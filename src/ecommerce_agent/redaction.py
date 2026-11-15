@@ -16,9 +16,7 @@ SECRET = re.compile(
 )
 BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-~+/]+=*")
 CVV = re.compile(r"(?i)\b(?:cvv|cvc|cvn)\s*[:#-]?\s*\d{3,4}\b")
-PHONE = re.compile(
-    r"(?<!\w)(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{2,4}\)?[\s.-]?)?\d{3}[\s.-]?\d{4}(?!\w)"
-)
+PHONE = re.compile(r"(?<!\w)(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{2,4}\)?[\s.-]?)?\d{3}[\s.-]?\d{4}(?!\w)")
 IBAN = re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b")
 
 
