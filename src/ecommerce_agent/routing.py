@@ -1,4 +1,4 @@
-"""Intent routing. A model may classify, and the keyword router is the recovery path."""
+"""Intent routing. A model may classify support questions; money paths need keyword agreement."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal
 
+from ecommerce_agent.injection import MONEY_INTENTS, money_intent_allowed
 from ecommerce_agent.models import Intent, UserRequest
 
 REFUND = re.compile(r"\b(refund|return|money back)\b", re.IGNORECASE)
@@ -70,14 +71,22 @@ class Router:
         self.model = model
 
     def route(self, message: str, explicit: Intent | None = None) -> RouteDecision:
+        # Explicit intents come from the merchant API (e.g. POST /v1/refunds), not from free text.
         if explicit is not None:
             return RouteDecision(intent=explicit, fallback=False, strategy="explicit")
+        keywords = keyword_route(message)
         classify = getattr(self.model, "classify", None)
         if callable(classify):
             try:
                 raw = classify(message)
                 intent = raw if isinstance(raw, Intent) else Intent(str(raw))
+                # Prompt injection that only fools the model cannot open a money path.
+                if intent in MONEY_INTENTS and not money_intent_allowed(intent, keywords):
+                    return RouteDecision(intent=keywords, fallback=True, strategy="keyword_over_model")
+                # Shopper words that clearly ask to move money win over a model that refuses.
+                if keywords in MONEY_INTENTS and intent not in MONEY_INTENTS:
+                    return RouteDecision(intent=keywords, fallback=True, strategy="keyword_money")
                 return RouteDecision(intent=intent, fallback=False, strategy="model")
             except Exception:
-                return RouteDecision(intent=keyword_route(message), fallback=True, strategy="keyword_fallback")
-        return RouteDecision(intent=keyword_route(message), fallback=False, strategy="keyword")
+                return RouteDecision(intent=keywords, fallback=True, strategy="keyword_fallback")
+        return RouteDecision(intent=keywords, fallback=False, strategy="keyword")

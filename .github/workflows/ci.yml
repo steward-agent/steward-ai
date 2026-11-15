@@ -93,10 +93,11 @@ jobs:
         run: bandit -r src/ecommerce_agent -ll -q
 
       - name: Dependency audit
-        # Free scanner only. Fail on known vulns in installed deps (not paid CodeQL).
+        # Free scanner only. Skip the local editable package (not on PyPI). No CodeQL.
+        # Do not use --strict: it fails on skipped editables even when deps are clean.
         run: |
-          python -m pip install -U pip certifi
-          pip-audit --progress-spinner off --strict
+          python -m pip install -U "pip>=26.2" "certifi>=2026.10.18"
+          pip-audit --progress-spinner off --skip-editable
 
       - name: Secret scan
         uses: gitleaks/gitleaks-action@v2

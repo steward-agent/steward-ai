@@ -8,6 +8,7 @@ Entry format: `- <type>: <subject> (#<pull request>)`, grouped under **Added** f
 
 ### Added
 
+- feat: block model/prompt injection from authorizing refunds or other money paths
 - feat: public data-protection, GDPR, PII, and payment-policy pages in code and on `/v1/privacy`
 - feat: block refund and payment tools when a message contains a card number or CVV
 - feat: CI lint (ruff) plus free security scans (bandit, pip-audit, gitleaks)
