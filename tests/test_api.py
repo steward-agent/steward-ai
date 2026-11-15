@@ -151,7 +151,35 @@ def test_rate_limit_is_a_429() -> None:
     second = client.post("/v1/messages", headers=headers, json={"message": "What is your return policy?"})
     assert first.status_code == 200
     assert second.status_code == 429
-    assert second.headers["retry-after"] == "1"
+    retry_after = int(second.headers["retry-after"])
+    assert retry_after >= 1
+    assert retry_after == second.json()["retry_after_seconds"]
+    # rpm=1 means one token every 60 seconds after the bucket is empty
+    assert retry_after == 60
+
+
+def test_cors_preflight_allows_the_idempotency_key_header() -> None:
+    settings = Settings(
+        demo=True,
+        approval_plugin="threshold",
+        auto_approve_below=Decimal("100"),
+        cors_origins=["https://store.example"],
+    )
+    secrets = MapSecrets({"PLUGIN_PUBLIC_TOKEN": PUBLIC, "PLUGIN_SERVER_TOKEN": SERVER})
+    agent = build_agent(settings, secrets=secrets)
+    client = TestClient(create_api(agent, Gateway(settings, secrets)))
+    response = client.options(
+        "/v1/refunds",
+        headers={
+            "Origin": "https://store.example",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type,idempotency-key",
+        },
+    )
+    assert response.status_code == 200
+    allowed = response.headers.get("access-control-allow-headers", "").lower()
+    assert "idempotency-key" in allowed
+    assert response.headers.get("access-control-allow-origin") == "https://store.example"
 
 
 def test_one_public_client_cannot_use_up_the_limit_for_others() -> None:

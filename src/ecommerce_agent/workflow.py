@@ -228,7 +228,12 @@ class AgentApp:
             check_id(request.order_id, "order_id")
         except Exception:
             return self._result(draft, Intent.REFUND, Outcome.DENIED, "That order id cannot be used. No refund was sent.", None)
-        key = self._key(request, "refund", [request.order_id, str(request.amount or "full")])
+        # Without a client key, include request_id so two equal partial refunds are not treated as one retry.
+        key = self._key(
+            request,
+            "refund",
+            [request.order_id, str(request.amount or "full"), draft.request_id],
+        )
         ctx = self._context(draft.request_id, key)
         draft.nodes.append("commerce_tool")
         try:

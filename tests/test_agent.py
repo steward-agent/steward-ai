@@ -206,6 +206,18 @@ def test_repeating_the_idempotency_key_does_not_refund_twice() -> None:
     assert len(payment.refunds) == 1
 
 
+def test_two_equal_partial_refunds_without_a_client_key_both_settle() -> None:
+    agent, payment, _commerce = _agent(order=_order(5, "40.00"), approval=ThresholdApproval(Decimal("100")))
+    caller = Caller(scope=Scope.SERVER)
+    first = agent.handle(_refund(amount=Decimal("10.00"), idempotency_key=None), caller)
+    second = agent.handle(_refund(amount=Decimal("10.00"), idempotency_key=None), caller)
+    assert first.outcome is Outcome.COMPLETED
+    assert second.outcome is Outcome.COMPLETED
+    assert first.idempotency_key != second.idempotency_key
+    assert payment.payments["pay_1001"]["refunded"] == Decimal("20.00")
+    assert len(payment.refunds) == 2
+
+
 def test_a_client_key_cannot_replay_another_orders_refund() -> None:
     agent, payment, commerce = _agent(order=_order(5, "40.00"), approval=ThresholdApproval(Decimal("100")))
     commerce.orders["2002"] = _order(5, "10.00", order_id="2002", customer="cust_2").model_copy(update={"payment_id": "pay_2002"})

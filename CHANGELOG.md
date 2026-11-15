@@ -14,6 +14,9 @@ Entry format: `- <type>: <subject> (#<pull request>)`, grouped under **Added** f
 
 ### Fixed
 
+- fix: give derived refund keys a unique request id so equal partial refunds both settle (#36)
+- fix: set Retry-After from the rate-limit bucket refill time (#37)
+- fix: allow the Idempotency-Key header in CORS preflight (#38)
 - fix: make the Langfuse redaction test independent of random event ids
 - fix: bind client idempotency keys to the merchant, action, and order (#32)
 - fix: rate-limit public callers per client address (#33)
