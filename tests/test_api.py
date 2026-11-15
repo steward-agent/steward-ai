@@ -33,6 +33,29 @@ def test_health_and_widget_script() -> None:
     assert SERVER not in script.text
 
 
+def test_privacy_pages_are_public() -> None:
+    client, _agent = _client()
+    index = client.get("/v1/privacy")
+    assert index.status_code == 200
+    assert index.json()["holds_card_data"] is False
+    assert {page["id"] for page in index.json()["pages"]} == {
+        "data-protection",
+        "gdpr",
+        "pii",
+        "payment-policy",
+    }
+    for path in ("/data-protection", "/gdpr", "/pii", "/payment-policy"):
+        page = client.get(path)
+        assert page.status_code == 200
+        assert "text/html" in page.headers["content-type"]
+        assert "Public policy" in page.text
+    gdpr = client.get("/v1/privacy/gdpr")
+    assert gdpr.status_code == 200
+    assert gdpr.json()["id"] == "gdpr"
+    assert gdpr.json()["sections"]
+    assert client.get("/v1/privacy/missing").status_code == 404
+
+
 def test_demo_page_is_off_unless_demo_mode_is_on() -> None:
     client, _agent = _client(demo=False)
     assert client.get("/demo").status_code == 404
@@ -260,7 +283,7 @@ def test_uploaded_and_added_org_rules_are_what_the_agent_reads(tmp_path) -> None
     assert uploaded.status_code == 200
     assert uploaded.json()["id"] == "org-refunds"
     assert (tmp_path / "org-refunds.md").is_file()
-    asked = client.post( "/v1/messages", headers=public, json={"message": "How long do I have to return an item?"})
+    asked = client.post("/v1/messages", headers=public, json={"message": "How long do I have to return an item?"})
     assert asked.status_code == 200
     assert "within 7 days" in asked.json()["message"]
     leaked = client.post(

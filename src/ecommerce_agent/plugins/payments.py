@@ -11,7 +11,6 @@ import httpx
 from ecommerce_agent.errors import PluginConfigError, ToolError
 from ecommerce_agent.gateway import check_currency, check_id
 from ecommerce_agent.models import (
-    CaptureResult,
     ConversionQuote,
     ConversionRequest,
     CreatePaymentRequest,
@@ -200,7 +199,11 @@ class HttpPaymentPlugin:
                 "idempotency_key": ctx.idempotency_key,
             },
         )
-        return PaymentCreated(id=str(body["id"]), status=str(body.get("status", "requires_confirmation")), provider=str(body.get("provider", "byo")))
+        return PaymentCreated(
+            id=str(body["id"]),
+            status=str(body.get("status", "requires_confirmation")),
+            provider=str(body.get("provider", "byo")),
+        )
 
     def settlement(self, ctx: CallContext, *, capture: bool, now: datetime) -> SettlementReport:
         listed = self.http.call(ctx, "GET", "/v1/settlements/unsettled", None)
@@ -255,7 +258,9 @@ class StripePaymentPlugin:
             "reason": "requested_by_customer",
         }
         body = self._form(ctx, "POST", "/v1/refunds", form)
-        status = {"succeeded": "succeeded", "pending": "pending", "failed": "failed"}.get(str(body.get("status")), "pending")
+        status = {"succeeded": "succeeded", "pending": "pending", "failed": "failed"}.get(
+            str(body.get("status")), "pending"
+        )
         return RefundResult(id=str(body["id"]), status=status, amount=request.amount, currency=request.currency)
 
     def quote_conversion(self, ctx: CallContext, request: ConversionRequest) -> ConversionQuote:
@@ -274,7 +279,9 @@ class StripePaymentPlugin:
         if request.order_id:
             form["metadata[order_id]"] = request.order_id
         body = self._form(ctx, "POST", "/v1/payment_intents", form)
-        return PaymentCreated(id=str(body["id"]), status=str(body.get("status", "requires_confirmation")), provider="stripe")
+        return PaymentCreated(
+            id=str(body["id"]), status=str(body.get("status", "requires_confirmation")), provider="stripe"
+        )
 
     def settlement(self, ctx: CallContext, *, capture: bool, now: datetime) -> SettlementReport:
         del now

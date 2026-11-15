@@ -45,8 +45,10 @@ Every push to `dev`, `UAT`, or `feature/**` runs the **Open PR to main** workflo
 
 | Workflow | Trigger | Job |
 | --- | --- | --- |
-| `CI` | Push to `main`, `dev`, `UAT`, or `feature/**`; pull requests; manual run | Install the package, run `pytest` with coverage on Python 3.11, 3.12, and 3.13, then gate on an All checks job |
+| `CI` | Push to `main`, `dev`, `UAT`, `feature/**`, `fix/**`, `docs/**`, or `plugin/**`; pull requests; manual run | Pytest + coverage on Python 3.11–3.13, Ruff lint/format, Bandit, pip-audit, Gitleaks, then All checks |
 | `Open PR to main` | Push to `dev`, `UAT`, or `feature/**` | Create or reuse a pull request into `main` |
+
+CI uses free open-source scanners only (no paid CodeQL Advanced Security).
 
 ### Actions permission for Open PR to main
 

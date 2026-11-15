@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, dev, UAT, "feature/**"]
+    branches: [main, dev, UAT, "feature/**", "fix/**", "docs/**", "plugin/**"]
   pull_request:
     branches: [main, dev, UAT]
   workflow_dispatch:
@@ -49,16 +49,78 @@ jobs:
             junit.xml
           if-no-files-found: error
 
+  lint:
+    name: Python lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install lint tools
+        run: pip install -e ".[dev]"
+
+      - name: Ruff check
+        run: ruff check src tests
+
+      - name: Ruff format check
+        run: ruff format --check src tests
+
+  security:
+    name: Security scans
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package and security tools
+        run: pip install -e ".[dev]"
+
+      - name: Bandit SAST
+        run: bandit -r src/ecommerce_agent -ll -q
+
+      - name: Dependency audit
+        # Free scanner only. Skip the local editable package (not on PyPI). No CodeQL.
+        # Do not use --strict: it fails on skipped editables even when deps are clean.
+        run: |
+          python -m pip install -U "pip>=26.2" "certifi>=2026.10.18"
+          pip-audit --progress-spinner off --skip-editable
+
+      - name: Secret scan
+        # Free gitleaks CLI. The GitHub Action requires a paid org license; the binary does not.
+        # .gitleaks.toml allowlists test/demo placeholders (not live keys).
+        run: |
+          VERSION=8.24.3
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
+          ./gitleaks detect --source . --no-banner --redact --config .gitleaks.toml
+
   ci:
     name: All checks
-    needs: [test]
+    needs: [test, lint, security]
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: Require the test matrix to pass
+      - name: Require every job to pass
         run: |
-          if [ "${{ needs.test.result }}" != "success" ]; then
-            echo "One or more Python test jobs failed."
+          test="${{ needs.test.result }}"
+          lint="${{ needs.lint.result }}"
+          security="${{ needs.security.result }}"
+          echo "test=$test lint=$lint security=$security"
+          if [ "$test" != "success" ] || [ "$lint" != "success" ] || [ "$security" != "success" ]; then
+            echo "One or more CI jobs failed."
             exit 1
           fi
-          echo "All code tests passed."
+          echo "All code, lint, and security checks passed."

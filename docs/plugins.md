@@ -85,6 +85,9 @@ When a guardrail decides the outcome, the response carries a `decision` code nex
 | `support` | Above the support line; waiting for support |
 | `approval` | Waiting for, or decided by, the approver |
 | `auto` | Inside every rule; sent to the payment provider |
+| `payment_instrument_blocked` | Message contained a card number or CVV; no money moved |
+
+Public privacy pages (no auth): `/v1/privacy`, `/data-protection`, `/gdpr`, `/pii`, `/payment-policy`.
 
 ## byo-v1 contract
 

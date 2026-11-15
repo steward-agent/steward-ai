@@ -18,6 +18,8 @@ Do not include live provider keys or card numbers in the report. A redacted requ
 - Provider base URLs must use https, except on localhost.
 - Public requests are rate limited per client address, so one client cannot lock out the widget for other shoppers.
 - The language model is not given a tool handle.
+- Prompt injection in shopper text is neutralized before routing. A model classifier cannot open a refund, settlement, or conversion path unless the keyword router agrees. Money movement uses structured guardrails, signed order access, and the merchant's approval rules—not model prose.
+- Card numbers or CVV in a refund or payment request are blocked before payment tools run.
 
 ## What you configure
 

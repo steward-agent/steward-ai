@@ -119,7 +119,9 @@ class FlutterwavePaymentPlugin:
                 )
                 continue
             payouts.append(
-                PayoutRecord(id=payment_id or "settlement", amount=amount, currency=currency, status=status or "unknown")
+                PayoutRecord(
+                    id=payment_id or "settlement", amount=amount, currency=currency, status=status or "unknown"
+                )
             )
         return SettlementReport(unsettled=unsettled, payouts=payouts, captured=captured)
 

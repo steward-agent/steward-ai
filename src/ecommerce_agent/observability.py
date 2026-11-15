@@ -112,9 +112,7 @@ def summarize(records: list[SignalRecord]) -> dict:
     scores = [item.retrieval_score for item in records if item.retrieval_score is not None]
     costs = [item.cost_usd for item in records if item.cost_usd is not None]
     token_rates = [
-        item.output_tokens / (item.e2e_ms / 1000)
-        for item in records
-        if item.output_tokens and item.e2e_ms > 0
+        item.output_tokens / (item.e2e_ms / 1000) for item in records if item.output_tokens and item.e2e_ms > 0
     ]
     waits = [item.queue_wait_ms for item in records if item.queue_wait_ms is not None]
     return {

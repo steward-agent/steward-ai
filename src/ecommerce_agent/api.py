@@ -24,6 +24,7 @@ from ecommerce_agent.gateway import (
 from ecommerce_agent.models import Intent, Scope, UserRequest, parse_positive_money
 from ecommerce_agent.observability import SignalDraft
 from ecommerce_agent.plugins.registry import commerce_secret_env, payment_secret_env, provider_key_names
+from ecommerce_agent.privacy import PRIVACY_PAGES, get_page, page_payload, privacy_index, render_html
 from ecommerce_agent.workflow import AgentApp
 
 WIDGET_PATH = Path(__file__).with_name("static").joinpath("widget.js")
@@ -141,6 +142,27 @@ def create_api(agent: AgentApp, gateway: Gateway) -> FastAPI:
     @app.get("/health")
     def health() -> dict:
         return {"status": "ok", "demo": agent.settings.demo}
+
+    @app.get("/v1/privacy")
+    def privacy_catalog() -> dict:
+        """Public machine-readable privacy index. No auth so shoppers and auditors can read it."""
+        return privacy_index()
+
+    @app.get("/v1/privacy/{page_id}")
+    def privacy_page_json(page_id: str) -> dict:
+        page = get_page(page_id)
+        if page is None:
+            raise HTTPException(status_code=404, detail="privacy_page_not_found")
+        return page_payload(page)
+
+    for _page in PRIVACY_PAGES:
+
+        def _html_page(page=_page):
+            return HTMLResponse(render_html(page))
+
+        app.add_api_route(
+            _page.path, _html_page, methods=["GET"], response_class=HTMLResponse, name=f"privacy_{_page.id}"
+        )
 
     @app.get("/ecommerce-agent.js")
     def widget_script() -> Response:

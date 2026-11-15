@@ -9,6 +9,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PlainSerializer
 
+
 def _parse_decimal(value: object) -> Decimal:
     if isinstance(value, float):
         raise ValueError("send amounts as strings, not floating-point numbers")

@@ -4,6 +4,8 @@ Ecommerce Agent is an open-source plugin for a store's own website. It answers c
 
 The code is licensed under the [MIT License](LICENSE). Using it in a store is also covered by the [Terms and Conditions](TERMS.md).
 
+**Public privacy and payment pages** (no login) on every running agent: [`/v1/privacy`](PRIVACY.md), [`/data-protection`](DATA_PROTECTION.md), [`/gdpr`](GDPR.md), [`/pii`](PII.md), [`/payment-policy`](PAYMENT_POLICY.md). The same topics are linked from the product website footer so anyone can read them.
+
 ## What you connect
 
 | Job | Who does it |
