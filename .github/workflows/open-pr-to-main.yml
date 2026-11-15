@@ -17,7 +17,7 @@ jobs:
     if: github.ref_name != 'main'
     steps:
       - name: Ensure pull request into main
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           # Prefer STEWARD_PR_TOKEN when the org blocks GITHUB_TOKEN from creating PRs.
           github-token: ${{ secrets.STEWARD_PR_TOKEN || secrets.GITHUB_TOKEN }}
